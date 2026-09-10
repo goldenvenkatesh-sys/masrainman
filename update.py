@@ -1,17 +1,16 @@
 """
 MasRainman Pan-India 6-hour rainfall updater.
 
-Runs in GitHub Actions and creates data.json
-for the GitHub Pages rainfall viewer.
+Free GitHub Actions + Open-Meteo version.
 
-Source:
-Open-Meteo model-specific APIs
+Creates:
+    data.json
 
 Models:
-ECMWF HRES
-GEM
-GFS
-ICON
+    ECMWF HRES
+    GEM
+    GFS
+    ICON
 """
 
 from __future__ import annotations
@@ -26,57 +25,76 @@ from urllib.error import HTTPError, URLError
 
 
 # ============================================================
-# CONFIGURATION
+# MODELS
 # ============================================================
 
 MODELS = {
-    "ECMWF HRES": "https://api.open-meteo.com/v1/ecmwf",
-    "GEM": "https://api.open-meteo.com/v1/gem",
-    "GFS": "https://api.open-meteo.com/v1/gfs",
-    "ICON": "https://api.open-meteo.com/v1/dwd-icon",
+    "ECMWF HRES":
+        "https://api.open-meteo.com/v1/ecmwf",
+
+    "GEM":
+        "https://api.open-meteo.com/v1/gem",
+
+    "GFS":
+        "https://api.open-meteo.com/v1/gfs",
+
+    "ICON":
+        "https://api.open-meteo.com/v1/dwd-icon",
 }
 
 
-# Pan-India + surrounding seas
+# ============================================================
+# PAN-INDIA DOMAIN
+# ============================================================
+
 LAT_MIN = 5.0
 LAT_MAX = 38.0
+
 LON_MIN = 65.0
 LON_MAX = 100.0
-
-
-# Source grid resolution
-GRID_STEP = 0.25
-
-
-# Open-Meteo supports multiple coordinates.
-BATCH_SIZE = 200
-
-
-# Forecast length
-FORECAST_DAYS = 3
-
-
-# Six-hour periods
-PERIODS = FORECAST_DAYS * 4
-
-
-# Retry configuration
-MAX_RETRIES = 5
-RETRY_DELAY = 5
-
-
-# Output
-OUTPUT = Path("data.json")
 
 
 # ============================================================
 # GRID
 # ============================================================
 
+# 0.50 degree grid.
+#
+# This is intentionally coarser than the previous 0.25 degree
+# grid so that the free API remains reliable.
+
+GRID_STEP = 0.50
+
+
+# ============================================================
+# REQUEST SETTINGS
+# ============================================================
+
+BATCH_SIZE = 200
+
+FORECAST_DAYS = 3
+
+PERIODS = FORECAST_DAYS * 4
+
+MAX_RETRIES = 8
+
+BASE_RETRY_DELAY = 10
+
+REQUEST_DELAY = 3.0
+
+
+# ============================================================
+# OUTPUT
+# ============================================================
+
+OUTPUT = Path("data.json")
+
+
+# ============================================================
+# BUILD GRID
+# ============================================================
+
 def build_grid():
-    """
-    Create the Pan-India rainfall grid.
-    """
 
     grid = []
 
@@ -88,11 +106,13 @@ def build_grid():
 
         while lon <= LON_MAX + 0.00001:
 
-            grid.append({
-                "lat": round(lat, 2),
-                "lon": round(lon, 2),
-                "models": {}
-            })
+            grid.append(
+                {
+                    "lat": round(lat, 2),
+                    "lon": round(lon, 2),
+                    "models": {}
+                }
+            )
 
             lon += GRID_STEP
 
@@ -102,20 +122,18 @@ def build_grid():
 
 
 # ============================================================
-# HTTP
+# FETCH JSON
 # ============================================================
 
 def fetch_json(url, params):
-    """
-    Fetch JSON with retries for temporary API errors.
-    """
 
     query = urlencode(params)
 
     full_url = url + "?" + query
 
     headers = {
-        "User-Agent": "MasRainman/1.0 rainfall updater"
+        "User-Agent":
+            "MasRainman/1.0 rainfall updater"
     }
 
     for attempt in range(1, MAX_RETRIES + 1):
@@ -129,7 +147,7 @@ def fetch_json(url, params):
 
             with urlopen(
                 request,
-                timeout=120
+                timeout=180
             ) as response:
 
                 raw = response.read()
@@ -142,63 +160,77 @@ def fetch_json(url, params):
 
             print(
                 f"HTTP {status} "
-                f"(attempt {attempt}/{MAX_RETRIES})"
+                f"(attempt "
+                f"{attempt}/{MAX_RETRIES})",
+                flush=True
             )
 
-            if status not in (429, 500, 502, 503, 504):
+            if status not in (
+                429,
+                500,
+                502,
+                503,
+                504
+            ):
                 raise
 
         except URLError as error:
 
             print(
                 f"Network error: {error} "
-                f"(attempt {attempt}/{MAX_RETRIES})"
+                f"(attempt "
+                f"{attempt}/{MAX_RETRIES})",
+                flush=True
             )
 
         except TimeoutError:
 
             print(
                 f"Timeout "
-                f"(attempt {attempt}/{MAX_RETRIES})"
+                f"(attempt "
+                f"{attempt}/{MAX_RETRIES})",
+                flush=True
             )
 
         if attempt < MAX_RETRIES:
 
-            delay = RETRY_DELAY * attempt
+            # Exponential backoff.
+            #
+            # 10, 20, 40, 80...
+            #
+            # This gives Open-Meteo time to recover
+            # from a temporary rate limit.
+
+            delay = min(
+                BASE_RETRY_DELAY * (2 ** (attempt - 1)),
+                120
+            )
 
             print(
-                f"Waiting {delay} seconds..."
+                f"Waiting {delay} seconds...",
+                flush=True
             )
 
             time.sleep(delay)
 
     raise RuntimeError(
-        f"Failed to fetch API after "
+        "Failed to fetch API after "
         f"{MAX_RETRIES} attempts"
     )
 
 
 # ============================================================
-# SIX-HOUR RAINFALL
+# SIX-HOUR TOTALS
 # ============================================================
 
 def six_hour_totals(hourly_precip):
-
-    """
-    Convert hourly precipitation into
-    six-hour accumulated rainfall.
-
-    0-6h
-    6-12h
-    12-18h
-    ...
-    """
 
     totals = []
 
     for period in range(PERIODS):
 
         start = period * 6
+
         end = start + 6
 
         values = hourly_precip[start:end]
@@ -206,12 +238,17 @@ def six_hour_totals(hourly_precip):
         if not values:
 
             totals.append(None)
+
             continue
 
         valid = [
+
             float(value)
+
             for value in values
+
             if value is not None
+
         ]
 
         if not valid:
@@ -221,7 +258,10 @@ def six_hour_totals(hourly_precip):
         else:
 
             totals.append(
-                round(sum(valid), 2)
+                round(
+                    sum(valid),
+                    2
+                )
             )
 
     return totals
@@ -238,6 +278,7 @@ def make_period_labels():
     for period in range(PERIODS):
 
         start = period * 6
+
         end = start + 6
 
         labels.append(
@@ -248,29 +289,55 @@ def make_period_labels():
 
 
 # ============================================================
-# MODEL DOWNLOAD
+# UPDATE ONE MODEL
 # ============================================================
 
-def update_model(model_name, endpoint, grid):
+def update_model(
+    model_name,
+    endpoint,
+    grid
+):
 
     print()
-    print("=" * 60)
-    print(f"Downloading {model_name}")
-    print("=" * 60)
+
+    print(
+        "=" * 60,
+        flush=True
+    )
+
+    print(
+        f"Downloading {model_name}",
+        flush=True
+    )
+
+    print(
+        "=" * 60,
+        flush=True
+    )
 
     total = len(grid)
 
     batches = [
-        grid[i:i + BATCH_SIZE]
-        for i in range(0, total, BATCH_SIZE)
+
+        grid[
+            i:i + BATCH_SIZE
+        ]
+
+        for i in range(
+            0,
+            total,
+            BATCH_SIZE
+        )
     ]
 
     print(
-        f"Grid points: {total}"
+        f"Grid points: {total}",
+        flush=True
     )
 
     print(
-        f"Requests: {len(batches)}"
+        f"Requests: {len(batches)}",
+        flush=True
     )
 
     for batch_number, batch in enumerate(
@@ -280,16 +347,23 @@ def update_model(model_name, endpoint, grid):
 
         print(
             f"{model_name}: "
-            f"batch {batch_number}/{len(batches)}"
+            f"batch "
+            f"{batch_number}/"
+            f"{len(batches)}",
+            flush=True
         )
 
         lats = ",".join(
+
             str(point["lat"])
+
             for point in batch
         )
 
         lons = ",".join(
+
             str(point["lon"])
+
             for point in batch
         )
 
@@ -301,15 +375,13 @@ def update_model(model_name, endpoint, grid):
 
             "hourly": "precipitation",
 
-            "forecast_days": FORECAST_DAYS,
+            "forecast_days":
+                FORECAST_DAYS,
 
             "timezone": "UTC",
 
-            "temperature_unit": "celsius",
-
-            "wind_speed_unit": "kmh",
-
-            "precipitation_unit": "mm"
+            "precipitation_unit":
+                "mm"
         }
 
         result = fetch_json(
@@ -317,24 +389,28 @@ def update_model(model_name, endpoint, grid):
             params
         )
 
-        # Open-Meteo returns one object for
-        # one coordinate and a list for
-        # multiple coordinates.
-        results = result
-
-        if not isinstance(
-            results,
+        if isinstance(
+            result,
             list
         ):
 
-            results = [results]
+            results = result
+
+        else:
+
+            results = [result]
 
         if len(results) != len(batch):
 
             raise RuntimeError(
+
                 f"{model_name}: API returned "
+
                 f"{len(results)} locations "
-                f"for {len(batch)} requested"
+
+                f"for "
+
+                f"{len(batch)} requested"
             )
 
         for point, location in zip(
@@ -358,11 +434,22 @@ def update_model(model_name, endpoint, grid):
                 )
             )
 
-        # Small delay between requests.
-        time.sleep(0.2)
+        # Deliberate pause between requests.
+        #
+        # This is important for the free API.
+
+        if (
+            batch_number <
+            len(batches)
+        ):
+
+            time.sleep(
+                REQUEST_DELAY
+            )
 
     print(
-        f"{model_name} completed."
+        f"{model_name} completed.",
+        flush=True
     )
 
 
@@ -377,12 +464,22 @@ def main():
     )
 
     print()
-    print("=" * 60)
-    print("MASRAINMAN RAINFALL UPDATER")
-    print("=" * 60)
 
     print(
-        f"Started: {started.isoformat()}"
+        "=" * 60
+    )
+
+    print(
+        "MASRAINMAN RAINFALL UPDATER"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    print(
+        f"Started: "
+        f"{started.isoformat()}"
     )
 
     print(
@@ -392,17 +489,20 @@ def main():
     )
 
     print(
-        f"Grid step: {GRID_STEP}°"
+        f"Grid step: "
+        f"{GRID_STEP}°"
     )
 
     print(
-        f"Forecast: {FORECAST_DAYS} days"
+        f"Forecast: "
+        f"{FORECAST_DAYS} days"
     )
 
     grid = build_grid()
 
     print(
-        f"Grid points: {len(grid)}"
+        f"Grid points: "
+        f"{len(grid)}"
     )
 
     for model_name, endpoint in MODELS.items():
@@ -419,20 +519,29 @@ def main():
 
     output = {
 
-        "updated": updated.isoformat(),
+        "updated":
+            updated.isoformat(),
 
         "source":
             "Open-Meteo model-specific APIs",
 
         "domain": {
 
-            "lat_min": LAT_MIN,
-            "lat_max": LAT_MAX,
-            "lon_min": LON_MIN,
-            "lon_max": LON_MAX
+            "lat_min":
+                LAT_MIN,
+
+            "lat_max":
+                LAT_MAX,
+
+            "lon_min":
+                LON_MIN,
+
+            "lon_max":
+                LON_MAX
         },
 
-        "step": GRID_STEP,
+        "step":
+            GRID_STEP,
 
         "forecast_days":
             FORECAST_DAYS,
@@ -440,7 +549,8 @@ def main():
         "periods":
             make_period_labels(),
 
-        "period_hours": 6,
+        "period_hours":
+            6,
 
         "models":
             list(MODELS.keys()),
@@ -461,22 +571,35 @@ def main():
         )
 
     print()
-    print("=" * 60)
-    print("UPDATE COMPLETE")
-    print("=" * 60)
 
     print(
-        f"Updated: {updated.isoformat()}"
+        "=" * 60
     )
 
     print(
-        f"Grid points: {len(grid)}"
+        "UPDATE COMPLETE"
     )
 
     print(
-        f"Output: {OUTPUT}"
+        "=" * 60
+    )
+
+    print(
+        f"Updated: "
+        f"{updated.isoformat()}"
+    )
+
+    print(
+        f"Grid points: "
+        f"{len(grid)}"
+    )
+
+    print(
+        f"Output: "
+        f"{OUTPUT}"
     )
 
 
 if __name__ == "__main__":
+
     main()
