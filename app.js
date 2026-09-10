@@ -1,482 +1,607 @@
-"""
-MasRainman Pan-India 6-hour rainfall updater.
+const levels = [
+  0.1, 1, 2, 3, 5, 7, 10, 15, 20, 25, 30, 40, 50, 60,
+  70, 80, 90, 100, 125, 150, 175, 200, 250, 300, 400,
+  500, 600, 800
+];
 
-Runs in GitHub Actions and creates data.json
-for the GitHub Pages rainfall viewer.
+const colors = [
+  "#f2f2f2",
+  "#c7dcff",
+  "#8ebfff",
+  "#4aa3ff",
+  "#007cff",
+  "#004b99",
+  "#1b5e20",
+  "#00c853",
+  "#64dd17",
+  "#c6ff00",
+  "#ffd600",
+  "#ffab00",
+  "#ff6d00",
+  "#ff8f00",
+  "#ff5c8a",
+  "#ff1f5b",
+  "#ff0033",
+  "#d50000",
+  "#7b1fa2",
+  "#6a00ff",
+  "#c000ff",
+  "#d580ff",
+  "#f0ccff",
+  "#d9d9d9",
+  "#a6a6a6",
+  "#7a7a7a",
+  "#4d4d4d",
+  "#333333"
+];
 
-Source:
-Open-Meteo model-specific APIs
 
-Models:
-ECMWF HRES
-GEM
-GFS
-ICON
-"""
+/* =========================================================
+   PAN-INDIA MAP VIEW
+   ========================================================= */
 
-from __future__ import annotations
+const mapBounds = [
+  [5.0, 65.0],
+  [38.0, 100.0]
+];
 
-import json
-import time
-from datetime import datetime, timezone
-from pathlib import Path
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
+const map = L.map("map").fitBounds(
+  mapBounds,
+  {
+    padding: [10, 10]
+  }
+);
 
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
+/* =========================================================
+   BASE MAP
+   ========================================================= */
 
-MODELS = {
-    "ECMWF HRES": "https://api.open-meteo.com/v1/ecmwf",
-    "GEM": "https://api.open-meteo.com/v1/gem",
-    "GFS": "https://api.open-meteo.com/v1/gfs",
-    "ICON": "https://api.open-meteo.com/v1/dwd-icon",
+L.tileLayer(
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {
+    attribution:
+      "© OpenStreetMap contributors"
+  }
+).addTo(map);
+
+
+/* Scale */
+
+L.control.scale({
+  imperial: false
+}).addTo(map);
+
+
+/* =========================================================
+   VARIABLES
+   ========================================================= */
+
+let layer = null;
+
+let data = null;
+
+
+/* =========================================================
+   RAINFALL COLOUR
+   ========================================================= */
+
+function color(value) {
+
+  if (
+    value === null ||
+    value === undefined ||
+    !Number.isFinite(value) ||
+    value < levels[0]
+  ) {
+    return null;
+  }
+
+  let index = 0;
+
+  while (
+    index < levels.length - 1 &&
+    value >= levels[index + 1]
+  ) {
+    index++;
+  }
+
+  return colors[
+    Math.min(
+      index,
+      colors.length - 1
+    )
+  ];
 }
 
 
-# Pan-India + surrounding seas
-LAT_MIN = 5.0
-LAT_MAX = 38.0
-LON_MIN = 65.0
-LON_MAX = 100.0
+/* =========================================================
+   PERIODS
+   ========================================================= */
+
+function updatePeriods() {
+
+  const select =
+    document.querySelector("#period");
+
+  if (!select || !data) {
+    return;
+  }
+
+  if (
+    Array.isArray(data.periods) &&
+    data.periods.length
+  ) {
+
+    select.innerHTML = "";
+
+    data.periods.forEach(
+      (label, index) => {
+
+        const option =
+          document.createElement("option");
+
+        option.value = index;
+
+        option.textContent = label;
+
+        select.appendChild(option);
+      }
+    );
+  }
+}
 
 
-# Source grid resolution
-GRID_STEP = 0.25
+/* =========================================================
+   DRAW RAINFALL
+   ========================================================= */
+
+function draw() {
+
+  if (!data) {
+    return;
+  }
 
 
-# Open-Meteo supports multiple coordinates.
-BATCH_SIZE = 200
+  if (layer) {
+
+    map.removeLayer(layer);
+
+    layer = null;
+  }
 
 
-# Forecast length
-FORECAST_DAYS = 3
+  const periodElement =
+    document.querySelector("#period");
+
+  const opacityElement =
+    document.querySelector("#opacity");
 
 
-# Six-hour periods
-PERIODS = FORECAST_DAYS * 4
+  const period =
+    periodElement
+      ? Number(periodElement.value)
+      : 0;
 
 
-# Retry configuration
-MAX_RETRIES = 5
-RETRY_DELAY = 5
+  const opacity =
+    opacityElement
+      ? Number(opacityElement.value)
+      : 0.8;
 
 
-# Output
-OUTPUT = Path("data.json")
-
-
-# ============================================================
-# GRID
-# ============================================================
-
-def build_grid():
-    """
-    Create the Pan-India rainfall grid.
-    """
-
-    grid = []
-
-    lat = LAT_MIN
-
-    while lat <= LAT_MAX + 0.00001:
-
-        lon = LON_MIN
-
-        while lon <= LON_MAX + 0.00001:
-
-            grid.append({
-                "lat": round(lat, 2),
-                "lon": round(lon, 2),
-                "models": {}
-            })
-
-            lon += GRID_STEP
-
-        lat += GRID_STEP
-
-    return grid
-
-
-# ============================================================
-# HTTP
-# ============================================================
-
-def fetch_json(url, params):
-    """
-    Fetch JSON with retries for temporary API errors.
-    """
-
-    query = urlencode(params)
-
-    full_url = url + "?" + query
-
-    headers = {
-        "User-Agent": "MasRainman/1.0 rainfall updater"
-    }
-
-    for attempt in range(1, MAX_RETRIES + 1):
-
-        try:
-
-            request = Request(
-                full_url,
-                headers=headers
-            )
-
-            with urlopen(
-                request,
-                timeout=120
-            ) as response:
-
-                raw = response.read()
-
-            return json.loads(raw)
-
-        except HTTPError as error:
-
-            status = error.code
-
-            print(
-                f"HTTP {status} "
-                f"(attempt {attempt}/{MAX_RETRIES})"
-            )
-
-            if status not in (429, 500, 502, 503, 504):
-                raise
-
-        except URLError as error:
-
-            print(
-                f"Network error: {error} "
-                f"(attempt {attempt}/{MAX_RETRIES})"
-            )
-
-        except TimeoutError:
-
-            print(
-                f"Timeout "
-                f"(attempt {attempt}/{MAX_RETRIES})"
-            )
-
-        if attempt < MAX_RETRIES:
-
-            delay = RETRY_DELAY * attempt
-
-            print(
-                f"Waiting {delay} seconds..."
-            )
-
-            time.sleep(delay)
-
-    raise RuntimeError(
-        f"Failed to fetch API after "
-        f"{MAX_RETRIES} attempts"
+  const selectedModels = [
+    ...document.querySelectorAll(
+      ".model:checked"
     )
+  ].map(
+    element => element.value
+  );
 
 
-# ============================================================
-# SIX-HOUR RAINFALL
-# ============================================================
+  const features = [];
 
-def six_hour_totals(hourly_precip):
 
-    """
-    Convert hourly precipitation into
-    six-hour accumulated rainfall.
+  /* If no model is selected,
+     don't draw anything. */
 
-    0-6h
-    6-12h
-    12-18h
-    ...
-    """
+  if (!selectedModels.length) {
 
-    totals = []
+    updateModelInfo();
 
-    for period in range(PERIODS):
+    return;
+  }
 
-        start = period * 6
-        end = start + 6
 
-        values = hourly_precip[start:end]
+  const step =
+    Number(data.step) || 0.25;
 
-        if not values:
 
-            totals.append(None)
-            continue
+  (data.grid || []).forEach(
+    gridPoint => {
 
-        valid = [
-            float(value)
-            for value in values
-            if value is not None
-        ]
+      const values =
+        selectedModels
+          .map(
+            model => {
 
-        if not valid:
+              const series =
+                (gridPoint.models || {})[
+                  model
+                ];
 
-            totals.append(None)
+              return Array.isArray(series)
+                ? series[period]
+                : null;
+            }
+          )
+          .filter(
+            Number.isFinite
+          );
 
-        else:
 
-            totals.append(
-                round(sum(valid), 2)
-            )
+      if (!values.length) {
+        return;
+      }
 
-    return totals
 
+      /* Equal-weight model mean */
 
-# ============================================================
-# PERIOD LABELS
-# ============================================================
+      const rainfall =
+        values.reduce(
+          (sum, value) =>
+            sum + value,
+          0
+        ) / values.length;
 
-def make_period_labels():
 
-    labels = []
+      const fill =
+        color(rainfall);
 
-    for period in range(PERIODS):
 
-        start = period * 6
-        end = start + 6
+      if (!fill) {
+        return;
+      }
 
-        labels.append(
-            f"{start}–{end} h"
-        )
 
-    return labels
+      const lat =
+        Number(gridPoint.lat);
 
+      const lon =
+        Number(gridPoint.lon);
 
-# ============================================================
-# MODEL DOWNLOAD
-# ============================================================
 
-def update_model(model_name, endpoint, grid):
+      features.push({
 
-    print()
-    print("=" * 60)
-    print(f"Downloading {model_name}")
-    print("=" * 60)
+        type: "Feature",
 
-    total = len(grid)
+        geometry: {
 
-    batches = [
-        grid[i:i + BATCH_SIZE]
-        for i in range(0, total, BATCH_SIZE)
-    ]
+          type: "Polygon",
 
-    print(
-        f"Grid points: {total}"
-    )
+          coordinates: [[
 
-    print(
-        f"Requests: {len(batches)}"
-    )
+            [
+              lon - step / 2,
+              lat - step / 2
+            ],
 
-    for batch_number, batch in enumerate(
-        batches,
-        start=1
-    ):
+            [
+              lon + step / 2,
+              lat - step / 2
+            ],
 
-        print(
-            f"{model_name}: "
-            f"batch {batch_number}/{len(batches)}"
-        )
-
-        lats = ",".join(
-            str(point["lat"])
-            for point in batch
-        )
-
-        lons = ",".join(
-            str(point["lon"])
-            for point in batch
-        )
-
-        params = {
-
-            "latitude": lats,
-
-            "longitude": lons,
-
-            "hourly": "precipitation",
-
-            "forecast_days": FORECAST_DAYS,
-
-            "timezone": "UTC",
-
-            "temperature_unit": "celsius",
-
-            "wind_speed_unit": "kmh",
-
-            "precipitation_unit": "mm"
-        }
-
-        result = fetch_json(
-            endpoint,
-            params
-        )
-
-        # Open-Meteo returns one object for
-        # one coordinate and a list for
-        # multiple coordinates.
-        results = result
-
-        if not isinstance(
-            results,
-            list
-        ):
-
-            results = [results]
-
-        if len(results) != len(batch):
-
-            raise RuntimeError(
-                f"{model_name}: API returned "
-                f"{len(results)} locations "
-                f"for {len(batch)} requested"
-            )
-
-        for point, location in zip(
-            batch,
-            results
-        ):
-
-            hourly = location.get(
-                "hourly",
-                {}
-            )
-
-            precipitation = hourly.get(
-                "precipitation",
-                []
-            )
-
-            point["models"][model_name] = (
-                six_hour_totals(
-                    precipitation
-                )
-            )
-
-        # Small delay between requests.
-        time.sleep(0.2)
-
-    print(
-        f"{model_name} completed."
-    )
-
-
-# ============================================================
-# MAIN
-# ============================================================
-
-def main():
-
-    started = datetime.now(
-        timezone.utc
-    )
-
-    print()
-    print("=" * 60)
-    print("MASRAINMAN RAINFALL UPDATER")
-    print("=" * 60)
-
-    print(
-        f"Started: {started.isoformat()}"
-    )
-
-    print(
-        f"Domain: "
-        f"{LAT_MIN}–{LAT_MAX} N, "
-        f"{LON_MIN}–{LON_MAX} E"
-    )
-
-    print(
-        f"Grid step: {GRID_STEP}°"
-    )
-
-    print(
-        f"Forecast: {FORECAST_DAYS} days"
-    )
-
-    grid = build_grid()
-
-    print(
-        f"Grid points: {len(grid)}"
-    )
-
-    for model_name, endpoint in MODELS.items():
-
-        update_model(
-            model_name,
-            endpoint,
-            grid
-        )
-
-    updated = datetime.now(
-        timezone.utc
-    )
-
-    output = {
-
-        "updated": updated.isoformat(),
-
-        "source":
-            "Open-Meteo model-specific APIs",
-
-        "domain": {
-
-            "lat_min": LAT_MIN,
-            "lat_max": LAT_MAX,
-            "lon_min": LON_MIN,
-            "lon_max": LON_MAX
+            [
+              lon + step / 2,
+              lat + step / 2
+            ],
+
+            [
+              lon - step / 2,
+              lat + step / 2
+            ],
+
+            [
+              lon - step / 2,
+              lat - step / 2
+            ]
+
+          ]]
         },
 
-        "step": GRID_STEP,
+        properties: {
 
-        "forecast_days":
-            FORECAST_DAYS,
+          rainfall:
+            rainfall
+        }
+      });
+    }
+  );
 
-        "periods":
-            make_period_labels(),
 
-        "period_hours": 6,
+  layer = L.geoJSON(
 
-        "models":
-            list(MODELS.keys()),
+    {
+      type:
+        "FeatureCollection",
 
-        "grid":
-            grid
+      features:
+        features
+    },
+
+    {
+
+      style:
+        feature => {
+
+          const rainfall =
+            feature.properties.rainfall;
+
+          const fill =
+            color(rainfall);
+
+          return {
+
+            fillColor:
+              fill,
+
+            fillOpacity:
+              opacity,
+
+            color:
+              fill,
+
+            weight: 0
+          };
+        },
+
+
+      onEachFeature:
+        (feature, polygon) => {
+
+          const rainfall =
+            feature.properties.rainfall;
+
+
+          polygon.bindTooltip(
+
+            `<b>${rainfall.toFixed(1)} mm</b><br>` +
+            `6-hour rainfall`,
+
+            {
+              sticky: true,
+              direction: "top"
+            }
+          );
+        }
     }
 
-    with OUTPUT.open(
-        "w",
-        encoding="utf-8"
-    ) as file:
+  ).addTo(map);
 
-        json.dump(
-            output,
-            file,
-            separators=(",", ":")
-        )
 
-    print()
-    print("=" * 60)
-    print("UPDATE COMPLETE")
-    print("=" * 60)
+  updateModelInfo();
+}
 
-    print(
-        f"Updated: {updated.isoformat()}"
+
+/* =========================================================
+   LEGEND
+   ========================================================= */
+
+function legend() {
+
+  const legendElement =
+    document.querySelector("#legend");
+
+  if (!legendElement) {
+    return;
+  }
+
+
+  let html =
+    "<b>Rainfall (mm / 6h)</b><br>";
+
+
+  levels.forEach(
+    (value, index) => {
+
+      const next =
+        index < levels.length - 1
+          ? levels[index + 1]
+          : null;
+
+
+      const label =
+        next !== null
+          ? `${value}–${next}`
+          : `≥${value}`;
+
+
+      html +=
+
+        `<span class="lg"
+          style="
+            display:inline-block;
+            width:14px;
+            height:14px;
+            margin-right:4px;
+            vertical-align:middle;
+            background:${colors[index]};
+          ">
+        </span>${label}<br>`;
+    }
+  );
+
+
+  legendElement.innerHTML =
+    html;
+}
+
+
+/* =========================================================
+   MODEL / UPDATE INFORMATION
+   ========================================================= */
+
+function updateModelInfo() {
+
+  const timeElement =
+    document.querySelector("#time");
+
+  if (!timeElement) {
+    return;
+  }
+
+
+  const selectedModels = [
+
+    ...document.querySelectorAll(
+      ".model:checked"
     )
 
-    print(
-        f"Grid points: {len(grid)}"
-    )
-
-    print(
-        f"Output: {OUTPUT}"
-    )
+  ].map(
+    element => element.value
+  );
 
 
-if __name__ == "__main__":
-    main()
+  let text = "";
+
+
+  if (
+    data &&
+    data.updated
+  ) {
+
+    const date =
+      new Date(data.updated);
+
+
+    if (
+      !Number.isNaN(
+        date.getTime()
+      )
+    ) {
+
+      text =
+        "Updated: " +
+
+        date.toLocaleString(
+          "en-IN",
+          {
+            dateStyle: "medium",
+            timeStyle: "short"
+          }
+        );
+    }
+  }
+
+
+  if (selectedModels.length) {
+
+    text +=
+      "  •  " +
+      selectedModels.join(" + ");
+
+  } else {
+
+    text +=
+      "  •  No model selected";
+  }
+
+
+  timeElement.textContent =
+    text;
+}
+
+
+/* =========================================================
+   LOAD DATA
+   ========================================================= */
+
+fetch(
+  "data.json?" +
+  Date.now()
+)
+
+  .then(
+    response => {
+
+      if (!response.ok) {
+
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+      return response.json();
+    }
+  )
+
+  .then(
+    json => {
+
+      data = json;
+
+
+      updatePeriods();
+
+      legend();
+
+      updateModelInfo();
+
+      draw();
+
+
+      /* Fit Pan-India view */
+
+      map.fitBounds(
+        mapBounds,
+        {
+          padding: [10, 10]
+        }
+      );
+    }
+  )
+
+  .catch(
+    error => {
+
+      console.error(
+        "MasRainman rainfall error:",
+        error
+      );
+
+
+      const timeElement =
+        document.querySelector("#time");
+
+
+      if (timeElement) {
+
+        timeElement.textContent =
+          "Rainfall data unavailable";
+      }
+    }
+  );
+
+
+/* =========================================================
+   CONTROL EVENTS
+   ========================================================= */
+
+document
+  .querySelectorAll(
+    ".model, #period, #opacity"
+  )
+  .forEach(
+    element => {
+
+      element.addEventListener(
+        "change",
+        () => {
+
+          updateModelInfo();
+
+          draw();
+        }
+      );
+    }
+  );
