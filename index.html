@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MasRainman 6-Hourly Rainfall</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+  <header><h1>6-Hourly Rainfall</h1><div id="time">Loading…</div></header>
+  <main>
+    <aside>
+      <h2>Models</h2>
+      <label><input type="checkbox" class="model" value="ECMWF HRES" checked> ECMWF HRES</label>
+      <label><input type="checkbox" class="model" value="GEM" checked> GEM</label>
+      <label><input type="checkbox" class="model" value="GFS" checked> GFS</label>
+      <label><input type="checkbox" class="model" value="ICON" checked> ICON</label>
+      <hr>
+      <label>6-hour period<select id="period"><option value="0">0–6 h</option><option value="1">6–12 h</option><option value="2">12–18 h</option><option value="3">18–24 h</option><option value="4">24–30 h</option><option value="5">30–36 h</option><option value="6">36–42 h</option><option value="7">42–48 h</option><option value="8">48–54 h</option><option value="9">54–60 h</option><option value="10">60–66 h</option><option value="11">66–72 h</option></select></label>
+      <label>Transparency <input id="opacity" type="range" min="0.2" max="1" step="0.05" value="0.8"></label>
+      <p class="note">Data are generated automatically. Open-Meteo attribution is required for this data source.</p>
+    </aside>
+    <section><div id="map"></div><div id="legend"></div></section>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
