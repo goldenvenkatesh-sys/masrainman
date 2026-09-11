@@ -1,7 +1,19 @@
 // ============================================================
 // MASRAINMAN
 // FAST + SHARP + MODERATELY SMOOTH 6-HOURLY RAINFALL MAP
-// VERSION 5
+// VERSION 6
+//
+// FEATURES
+// ------------------------------------------------------------
+// • < 1 mm / 6h = transparent
+// • 0.5° source grid with bilinear interpolation
+// • Reduced smoothing
+// • No blur
+// • Fast canvas rendering
+// • ECMWF / GEM / GFS / ICON model selection
+// • 6-hour period selection
+// • IST valid-time display
+// • UTC model-run display
 // ============================================================
 
 
@@ -56,13 +68,18 @@ const colors = [
 // MAP
 // ============================================================
 
-const map = L.map("map", {
-  preferCanvas: true,
-  zoomControl: true
-});
+const map = L.map(
+  "map",
+  {
+    preferCanvas: true,
+    zoomControl: true
+  }
+);
 
 
-// India + surrounding region
+// ============================================================
+// MAP EXTENT
+// ============================================================
 
 map.fitBounds(
   [
@@ -90,7 +107,7 @@ L.tileLayer(
 
 
 // ============================================================
-// DATA VARIABLES
+// GLOBAL DATA
 // ============================================================
 
 let data = null;
@@ -105,27 +122,43 @@ let gridLookup = new Map();
 
 
 // ============================================================
-// RGB CONVERSION
+// HEX → RGB
 // ============================================================
 
-function hexToRgb(hex) {
+function hexToRgb(
+  hex
+) {
 
   hex =
-    hex.replace("#", "");
+    hex.replace(
+      "#",
+      ""
+    );
+
 
   return {
+
     r: parseInt(
-      hex.substring(0, 2),
+      hex.substring(
+        0,
+        2
+      ),
       16
     ),
 
     g: parseInt(
-      hex.substring(2, 4),
+      hex.substring(
+        2,
+        4
+      ),
       16
     ),
 
     b: parseInt(
-      hex.substring(4, 6),
+      hex.substring(
+        4,
+        6
+      ),
       16
     )
   };
@@ -133,7 +166,9 @@ function hexToRgb(hex) {
 
 
 const rgbColors =
-  colors.map(hexToRgb);
+  colors.map(
+    hexToRgb
+  );
 
 
 // ============================================================
@@ -147,7 +182,8 @@ function getSelectedModels() {
       ".model:checked"
     )
   ].map(
-    el => el.value
+    element =>
+      element.value
   );
 }
 
@@ -173,13 +209,19 @@ function getPoint(
 
 
   const key =
-    lats[latIndex].toFixed(4) +
+    lats[
+      latIndex
+    ].toFixed(4) +
     "," +
-    lons[lonIndex].toFixed(4);
+    lons[
+      lonIndex
+    ].toFixed(4);
 
 
   return (
-    gridLookup.get(key) ||
+    gridLookup.get(
+      key
+    ) ||
     null
   );
 }
@@ -204,10 +246,14 @@ function lowerIndex(
 
   if (
     value >=
-    array[array.length - 1]
+    array[
+      array.length - 1
+    ]
   ) {
 
-    return array.length - 2;
+    return (
+      array.length - 2
+    );
   }
 
 
@@ -222,7 +268,10 @@ function lowerIndex(
   ) {
 
     const mid =
-      (low + high) >> 1;
+      (
+        low +
+        high
+      ) >> 1;
 
 
     if (
@@ -251,7 +300,7 @@ function lowerIndex(
 
 
 // ============================================================
-// BUILD MODEL MEAN FIELD
+// BUILD SELECTED MODEL FIELD
 // ============================================================
 
 function buildField(
@@ -284,9 +333,13 @@ function buildField(
         );
 
 
-      if (!point) {
+      if (
+        !point
+      ) {
 
-        row.push(null);
+        row.push(
+          null
+        );
 
         continue;
       }
@@ -300,7 +353,9 @@ function buildField(
 
           const arr =
             point.models &&
-            point.models[model];
+            point.models[
+              model
+            ];
 
 
           if (
@@ -326,13 +381,19 @@ function buildField(
         !values.length
       ) {
 
-        row.push(null);
+        row.push(
+          null
+        );
 
       } else {
 
         row.push(
           values.reduce(
-            (a, b) => a + b,
+            (
+              a,
+              b
+            ) =>
+              a + b,
             0
           ) /
           values.length
@@ -341,7 +402,9 @@ function buildField(
     }
 
 
-    field.push(row);
+    field.push(
+      row
+    );
   }
 
 
@@ -353,10 +416,9 @@ function buildField(
 // BILINEAR INTERPOLATION
 // ============================================================
 //
-// This removes the hard 0.5° block appearance.
-//
-// No blur is used.
-// No smooth-step is used.
+// No smooth-step.
+// No Gaussian blur.
+// Keeps rainfall cores sharper.
 // ============================================================
 
 function interpolate(
@@ -367,9 +429,13 @@ function interpolate(
 
   if (
     lat < lats[0] ||
-    lat > lats[lats.length - 1] ||
+    lat > lats[
+      lats.length - 1
+    ] ||
     lon < lons[0] ||
-    lon > lons[lons.length - 1]
+    lon > lons[
+      lons.length - 1
+    ]
   ) {
 
     return null;
@@ -439,19 +505,27 @@ function interpolate(
 
 
   const q21 =
-    field[yi][xi + 1];
+    field[yi][
+      xi + 1
+    ];
 
 
   const q12 =
-    field[yi + 1][xi];
+    field[
+      yi + 1
+    ][xi];
 
 
   const q22 =
-    field[yi + 1][xi + 1];
+    field[
+      yi + 1
+    ][
+      xi + 1
+    ];
 
 
   // ----------------------------------------------------------
-  // MISSING DATA FALLBACK
+  // Missing-data fallback
   // ----------------------------------------------------------
 
   if (
@@ -482,7 +556,11 @@ function interpolate(
 
     return (
       values.reduce(
-        (a, b) => a + b,
+        (
+          a,
+          b
+        ) =>
+          a + b,
         0
       ) /
       values.length
@@ -491,22 +569,28 @@ function interpolate(
 
 
   // ----------------------------------------------------------
-  // STANDARD BILINEAR INTERPOLATION
+  // LINEAR BILINEAR INTERPOLATION
   // ----------------------------------------------------------
 
   const top =
-    q11 * (1 - fx) +
-    q21 * fx;
+    q11 *
+      (1 - fx) +
+    q21 *
+      fx;
 
 
   const bottom =
-    q12 * (1 - fx) +
-    q22 * fx;
+    q12 *
+      (1 - fx) +
+    q22 *
+      fx;
 
 
   return (
-    top * (1 - fy) +
-    bottom * fy
+    top *
+      (1 - fy) +
+    bottom *
+      fy
   );
 }
 
@@ -518,8 +602,6 @@ function interpolate(
 // IMPORTANT:
 //
 // < 1 mm / 6h = TRANSPARENT
-//
-// This removes the very light 0.1–1 mm wash from the map.
 // ============================================================
 
 function rainfallColor(
@@ -527,7 +609,9 @@ function rainfallColor(
 ) {
 
   if (
-    !Number.isFinite(value) ||
+    !Number.isFinite(
+      value
+    ) ||
     value < 1
   ) {
 
@@ -552,8 +636,10 @@ function rainfallColor(
 
 
   while (
-    i < levels.length - 1 &&
-    value >= levels[i + 1]
+    i <
+      levels.length - 1 &&
+    value >=
+      levels[i + 1]
   ) {
 
     i++;
@@ -565,7 +651,9 @@ function rainfallColor(
 
 
   const high =
-    levels[i + 1];
+    levels[
+      i + 1
+    ];
 
 
   let t =
@@ -588,14 +676,16 @@ function rainfallColor(
 
 
   // Linear colour interpolation.
-  // No additional smoothing.
+  // No extra smoothing.
 
   const c1 =
     rgbColors[i];
 
 
   const c2 =
-    rgbColors[i + 1];
+    rgbColors[
+      i + 1
+    ];
 
 
   return {
@@ -605,7 +695,8 @@ function rainfallColor(
       (
         c2.r -
         c1.r
-      ) * t
+      ) *
+      t
     ),
 
     g: Math.round(
@@ -613,7 +704,8 @@ function rainfallColor(
       (
         c2.g -
         c1.g
-      ) * t
+      ) *
+      t
     ),
 
     b: Math.round(
@@ -621,7 +713,8 @@ function rainfallColor(
       (
         c2.b -
         c1.b
-      ) * t
+      ) *
+      t
     )
   };
 }
@@ -634,404 +727,425 @@ function rainfallColor(
 const RainLayer =
   L.Layer.extend({
 
-    onAdd: function(
-      map
-    ) {
+    onAdd:
+      function(
+        map
+      ) {
 
-      this._map =
-        map;
+        this._map =
+          map;
 
 
-      this._canvas =
-        document.createElement(
-          "canvas"
+        this._canvas =
+          document.createElement(
+            "canvas"
+          );
+
+
+        this._canvas.className =
+          "masrainman-rainfall";
+
+
+        this._canvas.style.position =
+          "absolute";
+
+
+        this._canvas.style.left =
+          "0px";
+
+
+        this._canvas.style.top =
+          "0px";
+
+
+        this._canvas.style.pointerEvents =
+          "none";
+
+
+        this._canvas.style.zIndex =
+          "350";
+
+
+        map.getPanes()
+          .overlayPane
+          .appendChild(
+            this._canvas
+          );
+
+
+        this._redraw =
+          () =>
+            this.redraw();
+
+
+        map.on(
+          "moveend zoomend resize",
+          this._redraw
         );
 
 
-      this._canvas.className =
-        "masrainman-rainfall";
+        this.redraw();
+      },
 
 
-      this._canvas.style.position =
-        "absolute";
+    onRemove:
+      function(
+        map
+      ) {
+
+        map.off(
+          "moveend zoomend resize",
+          this._redraw
+        );
 
 
-      this._canvas.style.left =
-        "0px";
-
-
-      this._canvas.style.top =
-        "0px";
-
-
-      this._canvas.style.pointerEvents =
-        "none";
-
-
-      this._canvas.style.zIndex =
-        "350";
-
-
-      map.getPanes()
-        .overlayPane
-        .appendChild(
+        if (
           this._canvas
-        );
+        ) {
 
+          this._canvas.remove();
+        }
+      },
 
-      this._redraw =
-        () => this.redraw();
 
+    redraw:
+      function() {
 
-      map.on(
-        "moveend zoomend resize",
-        this._redraw
-      );
+        if (
+          !data ||
+          !lats.length ||
+          !lons.length
+        ) {
 
+          return;
+        }
 
-      this.redraw();
-    },
 
+        const size =
+          this._map.getSize();
 
-    onRemove: function(
-      map
-    ) {
 
-      map.off(
-        "moveend zoomend resize",
-        this._redraw
-      );
+        const width =
+          Math.max(
+            1,
+            Math.floor(
+              size.x
+            )
+          );
 
 
-      if (
-        this._canvas
-      ) {
+        const height =
+          Math.max(
+            1,
+            Math.floor(
+              size.y
+            )
+          );
 
-        this._canvas.remove();
-      }
-    },
 
+        const canvas =
+          this._canvas;
 
-    redraw: function() {
 
-      if (
-        !data ||
-        !lats.length ||
-        !lons.length
-      ) {
+        canvas.width =
+          width;
 
-        return;
-      }
 
-
-      const size =
-        this._map.getSize();
-
-
-      const width =
-        Math.max(
-          1,
-          Math.floor(
-            size.x
-          )
-        );
-
-
-      const height =
-        Math.max(
-          1,
-          Math.floor(
-            size.y
-          )
-        );
-
-
-      const canvas =
-        this._canvas;
-
-
-      canvas.width =
-        width;
-
-
-      canvas.height =
-        height;
-
-
-      canvas.style.width =
-        width + "px";
-
-
-      canvas.style.height =
-        height + "px";
-
-
-      const ctx =
-        canvas.getContext(
-          "2d"
-        );
-
-
-      ctx.clearRect(
-        0,
-        0,
-        width,
-        height
-      );
-
-
-      // ------------------------------------------------------
-      // CONTROLS
-      // ------------------------------------------------------
-
-      const period =
-        Number(
-          document.querySelector(
-            "#period"
-          ).value
-        );
-
-
-      const opacity =
-        Number(
-          document.querySelector(
-            "#opacity"
-          ).value
-        );
-
-
-      const models =
-        getSelectedModels();
-
-
-      if (
-        !models.length
-      ) {
-
-        return;
-      }
-
-
-      // ------------------------------------------------------
-      // BUILD MODEL FIELD
-      // ------------------------------------------------------
-
-      const field =
-        buildField(
-          period,
-          models
-        );
-
-
-      // ------------------------------------------------------
-      // DISPLAY RESOLUTION
-      // ------------------------------------------------------
-      //
-      // Higher than the previous version,
-      // but still much faster than full pixel rendering.
-      // ------------------------------------------------------
-
-      const FW = 330;
-
-      const FH = 198;
-
-
-      const small =
-        document.createElement(
-          "canvas"
-        );
-
-
-      small.width =
-        FW;
-
-
-      small.height =
-        FH;
-
-
-      const smallCtx =
-        small.getContext(
-          "2d"
-        );
-
-
-      const image =
-        smallCtx.createImageData(
-          FW,
-          FH
-        );
-
-
-      const pixels =
-        image.data;
-
-
-      const bounds =
-        this._map.getBounds();
-
-
-      const west =
-        bounds.getWest();
-
-
-      const east =
-        bounds.getEast();
-
-
-      // ------------------------------------------------------
-      // RENDER
-      // ------------------------------------------------------
-
-      for (
-        let y = 0;
-        y < FH;
-        y++
-      ) {
-
-        const screenY =
-          (
-            y /
-            (FH - 1)
-          ) *
+        canvas.height =
           height;
 
 
-        // One Leaflet geographic conversion per row.
-
-        const rowLat =
-          this._map
-            .containerPointToLatLng(
-              L.point(
-                0,
-                screenY
-              )
-            )
-            .lat;
+        canvas.style.width =
+          width + "px";
 
 
-        for (
-          let x = 0;
-          x < FW;
-          x++
+        canvas.style.height =
+          height + "px";
+
+
+        const ctx =
+          canvas.getContext(
+            "2d"
+          );
+
+
+        ctx.clearRect(
+          0,
+          0,
+          width,
+          height
+        );
+
+
+        // ------------------------------------------------------
+        // CURRENT PERIOD
+        // ------------------------------------------------------
+
+        const period =
+          Number(
+            document.querySelector(
+              "#period"
+            ).value
+          );
+
+
+        // ------------------------------------------------------
+        // OPACITY
+        // ------------------------------------------------------
+
+        const opacity =
+          Number(
+            document.querySelector(
+              "#opacity"
+            ).value
+          );
+
+
+        // ------------------------------------------------------
+        // SELECTED MODELS
+        // ------------------------------------------------------
+
+        const models =
+          getSelectedModels();
+
+
+        if (
+          !models.length
         ) {
 
-          const fraction =
-            x /
-            (FW - 1);
+          return;
+        }
 
 
-          const lon =
-            west +
+        // ------------------------------------------------------
+        // MODEL MEAN FIELD
+        // ------------------------------------------------------
+
+        const field =
+          buildField(
+            period,
+            models
+          );
+
+
+        // ------------------------------------------------------
+        // FAST DISPLAY GRID
+        // ------------------------------------------------------
+
+        const FW = 330;
+
+        const FH = 198;
+
+
+        const small =
+          document.createElement(
+            "canvas"
+          );
+
+
+        small.width =
+          FW;
+
+
+        small.height =
+          FH;
+
+
+        const smallCtx =
+          small.getContext(
+            "2d"
+          );
+
+
+        const image =
+          smallCtx.createImageData(
+            FW,
+            FH
+          );
+
+
+        const pixels =
+          image.data;
+
+
+        // ------------------------------------------------------
+        // CURRENT MAP BOUNDS
+        // ------------------------------------------------------
+
+        const bounds =
+          this._map.getBounds();
+
+
+        const west =
+          bounds.getWest();
+
+
+        const east =
+          bounds.getEast();
+
+
+        // ------------------------------------------------------
+        // RENDER
+        // ------------------------------------------------------
+
+        for (
+          let y = 0;
+          y < FH;
+          y++
+        ) {
+
+          const screenY =
             (
-              east -
-              west
+              y /
+              (
+                FH - 1
+              )
             ) *
-            fraction;
+            height;
 
 
-          const value =
-            interpolate(
-              field,
-              rowLat,
-              lon
-            );
+          const rowLat =
+            this._map
+              .containerPointToLatLng(
+                L.point(
+                  0,
+                  screenY
+                )
+              )
+              .lat;
 
 
-          // --------------------------------------------------
-          // BELOW 1 MM = TRANSPARENT
-          // --------------------------------------------------
-
-          if (
-            value === null ||
-            value < 1
+          for (
+            let x = 0;
+            x < FW;
+            x++
           ) {
 
-            continue;
+            const fraction =
+              x /
+              (
+                FW - 1
+              );
+
+
+            const lon =
+              west +
+              (
+                east -
+                west
+              ) *
+              fraction;
+
+
+            const value =
+              interpolate(
+                field,
+                rowLat,
+                lon
+              );
+
+
+            // --------------------------------------------------
+            // BELOW 1 MM = NO COLOUR
+            // --------------------------------------------------
+
+            if (
+              value === null ||
+              value < 1
+            ) {
+
+              continue;
+            }
+
+
+            const c =
+              rainfallColor(
+                value
+              );
+
+
+            if (!c) {
+              continue;
+            }
+
+
+            const index =
+              (
+                y * FW +
+                x
+              ) * 4;
+
+
+            pixels[index] =
+              c.r;
+
+
+            pixels[
+              index + 1
+            ] =
+              c.g;
+
+
+            pixels[
+              index + 2
+            ] =
+              c.b;
+
+
+            pixels[
+              index + 3
+            ] =
+              Math.round(
+                255 *
+                opacity
+              );
           }
-
-
-          const c =
-            rainfallColor(
-              value
-            );
-
-
-          if (!c) {
-            continue;
-          }
-
-
-          const index =
-            (
-              y * FW +
-              x
-            ) * 4;
-
-
-          pixels[index] =
-            c.r;
-
-
-          pixels[index + 1] =
-            c.g;
-
-
-          pixels[index + 2] =
-            c.b;
-
-
-          pixels[index + 3] =
-            Math.round(
-              255 *
-              opacity
-            );
         }
+
+
+        smallCtx.putImageData(
+          image,
+          0,
+          0
+        );
+
+
+        // ------------------------------------------------------
+        // UPSCALE
+        // ------------------------------------------------------
+        //
+        // No blur.
+        // No filter.
+        // Medium interpolation gives a balance between
+        // smoothness and rainfall-core definition.
+        // ------------------------------------------------------
+
+        ctx.save();
+
+
+        ctx.imageSmoothingEnabled =
+          true;
+
+
+        ctx.imageSmoothingQuality =
+          "medium";
+
+
+        ctx.filter =
+          "none";
+
+
+        ctx.drawImage(
+          small,
+          0,
+          0,
+          width,
+          height
+        );
+
+
+        ctx.restore();
       }
-
-
-      smallCtx.putImageData(
-        image,
-        0,
-        0
-      );
-
-
-      // ------------------------------------------------------
-      // UPSCALE
-      // ------------------------------------------------------
-      //
-      // No blur.
-      // No filter.
-      // Only browser image interpolation.
-      // ------------------------------------------------------
-
-      ctx.save();
-
-
-      ctx.imageSmoothingEnabled =
-        true;
-
-
-      ctx.imageSmoothingQuality =
-        "medium";
-
-
-      ctx.filter =
-        "none";
-
-
-      ctx.drawImage(
-        small,
-        0,
-        0,
-        width,
-        height
-      );
-
-
-      ctx.restore();
-    }
   });
 
 
@@ -1050,7 +1164,9 @@ function drawRainfall() {
   }
 
 
-  if (rainLayer) {
+  if (
+    rainLayer
+  ) {
 
     map.removeLayer(
       rainLayer
@@ -1096,7 +1212,9 @@ function buildLegend() {
     ) => {
 
       const next =
-        levels[i + 1];
+        levels[
+          i + 1
+        ];
 
 
       const label =
@@ -1119,21 +1237,27 @@ function buildLegend() {
 
 
 // ============================================================
-// RUN HOUR
+// MODEL RUN HOUR
 // ============================================================
 //
-// Model cycles:
+// Model run cycles:
 // 00Z
 // 06Z
 // 12Z
 // 18Z
+//
+// Current data.json contains the update timestamp.
+// We derive the nearest completed 6-hour cycle.
 // ============================================================
 
 function getRunHour(
   timestamp
 ) {
 
-  if (!timestamp) {
+  if (
+    !timestamp
+  ) {
+
     return null;
   }
 
@@ -1184,7 +1308,10 @@ function formatRunDate(
   timestamp
 ) {
 
-  if (!timestamp) {
+  if (
+    !timestamp
+  ) {
+
     return null;
   }
 
@@ -1239,7 +1366,228 @@ function formatRunDate(
 
 
 // ============================================================
-// TOP RIGHT RUN DISPLAY
+// GET VALID TIME
+// ============================================================
+//
+// This function supports several possible data formats:
+//
+// 1. ISO timestamps in data.periods
+// 2. Date/time strings
+// 3. Hour offsets
+//
+// If periods contain timestamps, those are used directly.
+//
+// Otherwise the selected period is treated as a 6-hour
+// forecast offset from the model run.
+// ============================================================
+
+function getValidTimestamp(
+  period
+) {
+
+  // ----------------------------------------------------------
+  // OPTION 1 — PERIOD IS ALREADY AN ISO DATE
+  // ----------------------------------------------------------
+
+  if (
+    data &&
+    Array.isArray(
+      data.periods
+    ) &&
+    data.periods[
+      period
+    ]
+  ) {
+
+    const raw =
+      data.periods[
+        period
+      ];
+
+
+    if (
+      typeof raw === "string"
+    ) {
+
+      const parsed =
+        new Date(
+          raw
+        );
+
+
+      if (
+        !Number.isNaN(
+          parsed.getTime()
+        )
+      ) {
+
+        return parsed;
+      }
+    }
+  }
+
+
+  // ----------------------------------------------------------
+  // OPTION 2 — USE MODEL RUN + FORECAST INDEX
+  // ----------------------------------------------------------
+
+  if (
+    data &&
+    data.updated
+  ) {
+
+    const base =
+      new Date(
+        data.updated
+      );
+
+
+    if (
+      Number.isNaN(
+        base.getTime()
+      )
+    ) {
+
+      return null;
+    }
+
+
+    // Determine completed 6-hour run
+
+    const runHour =
+      Math.floor(
+        base.getUTCHours() /
+        6
+      ) * 6;
+
+
+    const run =
+      new Date(
+        base
+      );
+
+
+    run.setUTCHours(
+      runHour,
+      0,
+      0,
+      0
+    );
+
+
+    // Forecast period index × 6 hours
+
+    run.setUTCHours(
+      run.getUTCHours() +
+      (
+        Number(period) *
+        6
+      )
+    );
+
+
+    return run;
+  }
+
+
+  return null;
+}
+
+
+// ============================================================
+// FORMAT VALID TIME IN IST
+// ============================================================
+
+function formatValidIST(
+  period
+) {
+
+  const valid =
+    getValidTimestamp(
+      period
+    );
+
+
+  if (
+    !valid
+  ) {
+
+    return "--";
+  }
+
+
+  // Convert UTC → IST (+5:30)
+
+  const ist =
+    new Date(
+      valid.getTime() +
+      (
+        5.5 *
+        60 *
+        60 *
+        1000
+      )
+    );
+
+
+  const day =
+    String(
+      ist.getUTCDate()
+    ).padStart(
+      2,
+      "0"
+    );
+
+
+  const month =
+    ist.toLocaleString(
+      "en-US",
+      {
+        month: "short",
+        timeZone: "UTC"
+      }
+    );
+
+
+  const year =
+    ist.getUTCFullYear();
+
+
+  const hours =
+    String(
+      ist.getUTCHours()
+    ).padStart(
+      2,
+      "0"
+    );
+
+
+  const minutes =
+    String(
+      ist.getUTCMinutes()
+    ).padStart(
+      2,
+      "0"
+    );
+
+
+  return (
+    day +
+    " " +
+    month +
+    " " +
+    year +
+    " / " +
+    hours +
+    ":" +
+    minutes +
+    " IST"
+  );
+}
+
+
+// ============================================================
+// TOP-RIGHT RUN + VALID DISPLAY
 // ============================================================
 
 function updateHeader() {
@@ -1260,6 +1608,20 @@ function updateHeader() {
   }
 
 
+  const periodControl =
+    document.querySelector(
+      "#period"
+    );
+
+
+  const period =
+    periodControl
+      ? Number(
+          periodControl.value
+        )
+      : 0;
+
+
   const runDate =
     formatRunDate(
       data.updated
@@ -1272,13 +1634,21 @@ function updateHeader() {
     );
 
 
+  const validIST =
+    formatValidIST(
+      period
+    );
+
+
   if (
     !runDate ||
     !runHour
   ) {
 
     time.textContent =
-      "Run : --";
+      "Run : -- | Valid : " +
+      validIST;
+
 
     return;
   }
@@ -1288,8 +1658,14 @@ function updateHeader() {
     "Run : " +
     runDate +
     " / " +
-    runHour;
+    runHour +
+    "  |  Valid : " +
+    validIST;
 
+
+  // ----------------------------------------------------------
+  // HEADER STYLE
+  // ----------------------------------------------------------
 
   time.style.fontWeight =
     "600";
@@ -1300,7 +1676,7 @@ function updateHeader() {
 
 
   time.style.color =
-    "#555";
+    "#444";
 
 
   time.style.whiteSpace =
@@ -1399,7 +1775,10 @@ function prepareGrid() {
     [
       ...latSet
     ].sort(
-      (a, b) =>
+      (
+        a,
+        b
+      ) =>
         a - b
     );
 
@@ -1408,14 +1787,17 @@ function prepareGrid() {
     [
       ...lonSet
     ].sort(
-      (a, b) =>
+      (
+        a,
+        b
+      ) =>
         a - b
     );
 }
 
 
 // ============================================================
-// MODEL CHECKBOX EVENTS
+// MODEL CHECKBOXES
 // ============================================================
 
 document
@@ -1429,13 +1811,12 @@ document
         "change",
         drawRainfall
       );
-
     }
   );
 
 
 // ============================================================
-// PERIOD EVENT
+// PERIOD CONTROL
 // ============================================================
 
 const periodControl =
@@ -1450,13 +1831,23 @@ if (
 
   periodControl.addEventListener(
     "change",
-    drawRainfall
+    () => {
+
+      // Update Valid time immediately
+
+      updateHeader();
+
+
+      // Redraw rainfall
+
+      drawRainfall();
+    }
   );
 }
 
 
 // ============================================================
-// TRANSPARENCY
+// OPACITY CONTROL
 // ============================================================
 
 const opacityControl =
@@ -1469,7 +1860,7 @@ if (
   opacityControl
 ) {
 
-  // Default opacity
+  // Default transparency
 
   opacityControl.value =
     "0.62";
@@ -1516,24 +1907,34 @@ fetch(
         json;
 
 
+      // Prepare rainfall grid
+
       prepareGrid();
 
+
+      // Build legend
 
       buildLegend();
 
 
+      // Display Run + Valid
+
       updateHeader();
 
+
+      // Draw rainfall
 
       drawRainfall();
 
 
-      // Second render after map layout
+      // Second render after Leaflet layout
 
       setTimeout(
         () => {
 
           map.invalidateSize();
+
+          updateHeader();
 
           drawRainfall();
 
