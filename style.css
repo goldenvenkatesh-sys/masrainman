@@ -21,3 +21,6 @@ section{min-width:0}
 .legend-item{display:inline-flex;align-items:center;margin-right:8px;white-space:nowrap}
 .legend-item i{display:inline-block;width:14px;height:10px;margin-right:3px;border:1px solid rgba(0,0,0,.12)}
 @media(max-width:800px){main{grid-template-columns:1fr}#map{height:650px;min-height:420px}}
+.wind-toggle{font-weight:700}
+.wind-note{font-size:10px;line-height:1.4;color:#66717d;margin-top:5px}
+#windSourceWrap select{margin-top:5px}
