@@ -1,6 +1,6 @@
 // ============================================================
-// MASRAINMAN — SMOOTH METEOROLOGICAL RAINFALL MAP
-// Version 2 — fine interpolation + smoothing
+// MASRAINMAN — FAST SMOOTH 6-HOURLY RAINFALL MAP
+// Optimized smooth rendering
 // ============================================================
 
 const levels = [
@@ -62,7 +62,7 @@ map.fitBounds(
 
 
 // ============================================================
-// BASE MAP
+// BASEMAP
 // ============================================================
 
 L.tileLayer(
@@ -75,7 +75,7 @@ L.tileLayer(
 
 
 // ============================================================
-// VARIABLES
+// DATA VARIABLES
 // ============================================================
 
 let data = null;
@@ -88,7 +88,7 @@ let gridLookup = new Map();
 
 
 // ============================================================
-// COLOR CONVERSION
+// RGB COLORS
 // ============================================================
 
 function hexToRgb(hex) {
@@ -102,11 +102,302 @@ function hexToRgb(hex) {
   };
 }
 
-const rgbColors = colors.map(hexToRgb);
+const rgbColors =
+  colors.map(hexToRgb);
 
 
 // ============================================================
-// SMOOTH COLOR
+// SELECTED MODELS
+// ============================================================
+
+function getSelectedModels() {
+
+  return [
+    ...document.querySelectorAll(".model:checked")
+  ].map(
+    el => el.value
+  );
+}
+
+
+// ============================================================
+// MODEL MEAN
+// ============================================================
+
+function pointValue(point, period, models) {
+
+  if (!point) {
+    return null;
+  }
+
+  const values = [];
+
+  models.forEach(model => {
+
+    const arr =
+      point.models &&
+      point.models[model];
+
+    if (
+      arr &&
+      Number.isFinite(
+        Number(arr[period])
+      )
+    ) {
+
+      values.push(
+        Number(arr[period])
+      );
+    }
+  });
+
+  if (!values.length) {
+    return null;
+  }
+
+  return (
+    values.reduce(
+      (a, b) => a + b,
+      0
+    ) / values.length
+  );
+}
+
+
+// ============================================================
+// GRID LOOKUP
+// ============================================================
+
+function getPoint(latIndex, lonIndex) {
+
+  if (
+    latIndex < 0 ||
+    lonIndex < 0 ||
+    latIndex >= lats.length ||
+    lonIndex >= lons.length
+  ) {
+    return null;
+  }
+
+  const key =
+    lats[latIndex].toFixed(4) +
+    "," +
+    lons[lonIndex].toFixed(4);
+
+  return (
+    gridLookup.get(key) ||
+    null
+  );
+}
+
+
+// ============================================================
+// FIND LOWER GRID INDEX
+// ============================================================
+
+function lowerIndex(array, value) {
+
+  if (
+    value <= array[0]
+  ) {
+    return 0;
+  }
+
+  if (
+    value >= array[array.length - 1]
+  ) {
+    return array.length - 2;
+  }
+
+  let low = 0;
+  let high = array.length - 1;
+
+  while (low <= high) {
+
+    const mid =
+      Math.floor(
+        (low + high) / 2
+      );
+
+    if (
+      array[mid] <= value
+    ) {
+
+      low =
+        mid + 1;
+
+    } else {
+
+      high =
+        mid - 1;
+    }
+  }
+
+  return Math.max(
+    0,
+    Math.min(
+      array.length - 2,
+      high
+    )
+  );
+}
+
+
+// ============================================================
+// FAST BILINEAR INTERPOLATION
+// ============================================================
+
+function interpolateRainfall(
+  lat,
+  lon,
+  period,
+  models
+) {
+
+  if (
+    lat < lats[0] ||
+    lat > lats[lats.length - 1] ||
+    lon < lons[0] ||
+    lon > lons[lons.length - 1]
+  ) {
+    return null;
+  }
+
+  const yi =
+    lowerIndex(
+      lats,
+      lat
+    );
+
+  const xi =
+    lowerIndex(
+      lons,
+      lon
+    );
+
+  const y0 =
+    lats[yi];
+
+  const y1 =
+    lats[yi + 1];
+
+  const x0 =
+    lons[xi];
+
+  const x1 =
+    lons[xi + 1];
+
+  let fy =
+    (lat - y0) /
+    (y1 - y0);
+
+  let fx =
+    (lon - x0) /
+    (x1 - x0);
+
+  fx =
+    Math.max(
+      0,
+      Math.min(1, fx)
+    );
+
+  fy =
+    Math.max(
+      0,
+      Math.min(1, fy)
+    );
+
+
+  const q11 =
+    pointValue(
+      getPoint(yi, xi),
+      period,
+      models
+    );
+
+  const q21 =
+    pointValue(
+      getPoint(yi, xi + 1),
+      period,
+      models
+    );
+
+  const q12 =
+    pointValue(
+      getPoint(yi + 1, xi),
+      period,
+      models
+    );
+
+  const q22 =
+    pointValue(
+      getPoint(yi + 1, xi + 1),
+      period,
+      models
+    );
+
+
+  const values = [
+    q11,
+    q21,
+    q12,
+    q22
+  ].filter(
+    v => v !== null
+  );
+
+
+  if (!values.length) {
+    return null;
+  }
+
+
+  // Missing corner fallback
+
+  if (
+    q11 === null ||
+    q21 === null ||
+    q12 === null ||
+    q22 === null
+  ) {
+
+    return (
+      values.reduce(
+        (a, b) => a + b,
+        0
+      ) /
+      values.length
+    );
+  }
+
+
+  // Smooth-step interpolation
+
+  fx =
+    fx * fx * (3 - 2 * fx);
+
+  fy =
+    fy * fy * (3 - 2 * fy);
+
+
+  const top =
+    q11 * (1 - fx) +
+    q21 * fx;
+
+  const bottom =
+    q12 * (1 - fx) +
+    q22 * fx;
+
+
+  return (
+    top * (1 - fy) +
+    bottom * fy
+  );
+}
+
+
+// ============================================================
+// CONTINUOUS RAINFALL COLOUR
 // ============================================================
 
 function rainfallColor(value) {
@@ -120,17 +411,13 @@ function rainfallColor(value) {
 
 
   if (
-    value >= levels[levels.length - 1]
+    value >=
+    levels[levels.length - 1]
   ) {
 
-    const c =
-      rgbColors[rgbColors.length - 1];
-
-    return {
-      r: c.r,
-      g: c.g,
-      b: c.b
-    };
+    return rgbColors[
+      rgbColors.length - 1
+    ];
   }
 
 
@@ -163,342 +450,40 @@ function rainfallColor(value) {
     );
 
 
-  // Smooth-step interpolation.
-  // This avoids harsh transitions.
+  // Smooth colour transition
 
   t =
     t * t * (3 - 2 * t);
 
 
-  const a =
+  const c1 =
     rgbColors[i];
 
-  const b =
+  const c2 =
     rgbColors[i + 1];
 
 
   return {
     r: Math.round(
-      a.r + (b.r - a.r) * t
+      c1.r +
+      (c2.r - c1.r) * t
     ),
 
     g: Math.round(
-      a.g + (b.g - a.g) * t
+      c1.g +
+      (c2.g - c1.g) * t
     ),
 
     b: Math.round(
-      a.b + (b.b - a.b) * t
+      c1.b +
+      (c2.b - c1.b) * t
     )
   };
 }
 
 
 // ============================================================
-// SELECTED MODELS
-// ============================================================
-
-function getSelectedModels() {
-
-  return [
-    ...document.querySelectorAll(
-      ".model:checked"
-    )
-  ].map(
-    el => el.value
-  );
-}
-
-
-// ============================================================
-// GET POINT VALUE
-// ============================================================
-
-function pointValue(point, period, models) {
-
-  if (!point) {
-    return null;
-  }
-
-
-  const values = [];
-
-
-  models.forEach(model => {
-
-    const arr =
-      point.models &&
-      point.models[model];
-
-
-    if (
-      arr &&
-      Number.isFinite(
-        Number(arr[period])
-      )
-    ) {
-
-      values.push(
-        Number(arr[period])
-      );
-
-    }
-
-  });
-
-
-  if (!values.length) {
-    return null;
-  }
-
-
-  return (
-    values.reduce(
-      (a, b) => a + b,
-      0
-    ) / values.length
-  );
-}
-
-
-// ============================================================
-// FIND GRID INDEX
-// ============================================================
-
-function lowerIndex(array, value) {
-
-  if (
-    value <= array[0]
-  ) {
-    return 0;
-  }
-
-
-  if (
-    value >= array[array.length - 1]
-  ) {
-    return array.length - 2;
-  }
-
-
-  let low = 0;
-  let high = array.length - 1;
-
-
-  while (
-    low <= high
-  ) {
-
-    const mid =
-      Math.floor(
-        (low + high) / 2
-      );
-
-
-    if (
-      array[mid] <= value
-    ) {
-
-      low =
-        mid + 1;
-
-    } else {
-
-      high =
-        mid - 1;
-
-    }
-  }
-
-
-  return Math.max(
-    0,
-    Math.min(
-      array.length - 2,
-      high
-    )
-  );
-}
-
-
-// ============================================================
-// GRID POINT LOOKUP
-// ============================================================
-
-function getPoint(latIndex, lonIndex) {
-
-  if (
-    latIndex < 0 ||
-    lonIndex < 0 ||
-    latIndex >= lats.length ||
-    lonIndex >= lons.length
-  ) {
-    return null;
-  }
-
-
-  const key =
-    lats[latIndex].toFixed(4) +
-    "," +
-    lons[lonIndex].toFixed(4);
-
-
-  return gridLookup.get(key) || null;
-}
-
-
-// ============================================================
-// BILINEAR INTERPOLATION
-// ============================================================
-
-function interpolateRainfall(
-  lat,
-  lon,
-  period,
-  models
-) {
-
-  if (
-    lat < lats[0] ||
-    lat > lats[lats.length - 1] ||
-    lon < lons[0] ||
-    lon > lons[lons.length - 1]
-  ) {
-    return null;
-  }
-
-
-  const yi =
-    lowerIndex(
-      lats,
-      lat
-    );
-
-  const xi =
-    lowerIndex(
-      lons,
-      lon
-    );
-
-
-  const y0 =
-    lats[yi];
-
-  const y1 =
-    lats[yi + 1];
-
-  const x0 =
-    lons[xi];
-
-  const x1 =
-    lons[xi + 1];
-
-
-  const fy =
-    y1 === y0
-      ? 0
-      : (lat - y0) /
-        (y1 - y0);
-
-
-  const fx =
-    x1 === x0
-      ? 0
-      : (lon - x0) /
-        (x1 - x0);
-
-
-  const q11 =
-    pointValue(
-      getPoint(yi, xi),
-      period,
-      models
-    );
-
-  const q21 =
-    pointValue(
-      getPoint(yi, xi + 1),
-      period,
-      models
-    );
-
-  const q12 =
-    pointValue(
-      getPoint(yi + 1, xi),
-      period,
-      models
-    );
-
-  const q22 =
-    pointValue(
-      getPoint(yi + 1, xi + 1),
-      period,
-      models
-    );
-
-
-  const available = [
-    q11,
-    q21,
-    q12,
-    q22
-  ].filter(
-    v => v !== null
-  );
-
-
-  if (!available.length) {
-    return null;
-  }
-
-
-  // If one or more neighbours are missing,
-  // use the available average.
-
-  if (
-    q11 === null ||
-    q21 === null ||
-    q12 === null ||
-    q22 === null
-  ) {
-
-    return (
-      available.reduce(
-        (a, b) => a + b,
-        0
-      ) /
-      available.length
-    );
-  }
-
-
-  // Smooth-step geographic interpolation
-
-  let sx =
-    fx * fx * (3 - 2 * fx);
-
-  let sy =
-    fy * fy * (3 - 2 * fy);
-
-
-  const top =
-    q11 * (1 - sx) +
-    q21 * sx;
-
-
-  const bottom =
-    q12 * (1 - sx) +
-    q22 * sx;
-
-
-  return (
-    top * (1 - sy) +
-    bottom * sy
-  );
-}
-
-
-// ============================================================
-// SMOOTH RAIN CANVAS
+// SMOOTH RAINFALL CANVAS
 // ============================================================
 
 const SmoothRainLayer =
@@ -506,7 +491,8 @@ const SmoothRainLayer =
 
     onAdd: function(map) {
 
-      this._map = map;
+      this._map =
+        map;
 
 
       this._canvas =
@@ -515,25 +501,23 @@ const SmoothRainLayer =
         );
 
 
-      this._canvas.className =
-        "masrainman-smooth-rain";
-
-
       this._canvas.style.position =
         "absolute";
-
 
       this._canvas.style.left =
         "0px";
 
-
       this._canvas.style.top =
         "0px";
 
+      this._canvas.style.width =
+        "100%";
+
+      this._canvas.style.height =
+        "100%";
 
       this._canvas.style.pointerEvents =
         "none";
-
 
       this._canvas.style.zIndex =
         "350";
@@ -589,17 +573,16 @@ const SmoothRainLayer =
         this._map.getSize();
 
 
-      const width =
+      const displayWidth =
         Math.max(
           1,
-          Math.floor(size.x)
+          size.x
         );
 
-
-      const height =
+      const displayHeight =
         Math.max(
           1,
-          Math.floor(size.y)
+          size.y
         );
 
 
@@ -608,23 +591,24 @@ const SmoothRainLayer =
 
 
       canvas.width =
-        width;
+        displayWidth;
 
       canvas.height =
-        height;
-
-
-      canvas.style.width =
-        width + "px";
-
-      canvas.style.height =
-        height + "px";
+        displayHeight;
 
 
       const ctx =
         canvas.getContext(
           "2d"
         );
+
+
+      ctx.clearRect(
+        0,
+        0,
+        displayWidth,
+        displayHeight
+      );
 
 
       const period =
@@ -648,49 +632,47 @@ const SmoothRainLayer =
 
 
       if (!models.length) {
-
-        ctx.clearRect(
-          0,
-          0,
-          width,
-          height
-        );
-
         return;
       }
 
 
       // ------------------------------------------------------
-      // FIRST PASS
+      // LOW RESOLUTION METEOROLOGICAL FIELD
       // ------------------------------------------------------
 
-      // Render into an off-screen canvas.
-      // This is then blurred gently before being placed
-      // on the map.
+      // This is the key performance improvement.
+      //
+      // We calculate only 360 × 220 values rather than
+      // calculating hundreds of thousands of screen pixels.
 
-      const raw =
+      const FIELD_WIDTH = 360;
+
+      const FIELD_HEIGHT = 220;
+
+
+      const field =
         document.createElement(
           "canvas"
         );
 
 
-      raw.width =
-        width;
+      field.width =
+        FIELD_WIDTH;
 
-      raw.height =
-        height;
+      field.height =
+        FIELD_HEIGHT;
 
 
-      const rawCtx =
-        raw.getContext(
+      const fieldCtx =
+        field.getContext(
           "2d"
         );
 
 
       const image =
-        rawCtx.createImageData(
-          width,
-          height
+        fieldCtx.createImageData(
+          FIELD_WIDTH,
+          FIELD_HEIGHT
         );
 
 
@@ -698,36 +680,72 @@ const SmoothRainLayer =
         image.data;
 
 
-      // Sampling every 2 pixels gives good performance
-      // while still producing a very fine rainfall field.
+      const bounds =
+        this._map.getBounds();
 
-      const sample = 2;
 
+      const west =
+        bounds.getWest();
+
+      const east =
+        bounds.getEast();
+
+
+      // ------------------------------------------------------
+      // CALCULATE EACH FIELD ROW
+      // ------------------------------------------------------
 
       for (
         let y = 0;
-        y < height;
-        y += sample
+        y < FIELD_HEIGHT;
+        y++
       ) {
+
+        const screenY =
+          (
+            y /
+            (FIELD_HEIGHT - 1)
+          ) *
+          displayHeight;
+
+
+        // Only one Leaflet coordinate conversion
+        // per row instead of one per pixel.
+
+        const rowLat =
+          this._map
+            .containerPointToLatLng(
+              L.point(
+                0,
+                screenY
+              )
+            )
+            .lat;
 
 
         for (
           let x = 0;
-          x < width;
-          x += sample
+          x < FIELD_WIDTH;
+          x++
         ) {
 
+          const fraction =
+            x /
+            (FIELD_WIDTH - 1);
 
-          const latlng =
-            this._map.containerPointToLatLng(
-              L.point(x, y)
-            );
+
+          const lon =
+            west +
+            (
+              east - west
+            ) *
+            fraction;
 
 
           const value =
             interpolateRainfall(
-              latlng.lat,
-              latlng.lng,
+              rowLat,
+              lon,
               period,
               models
             );
@@ -752,57 +770,32 @@ const SmoothRainLayer =
           }
 
 
-          const alpha =
+          const index =
+            (
+              y *
+              FIELD_WIDTH +
+              x
+            ) * 4;
+
+
+          pixels[index] =
+            c.r;
+
+          pixels[index + 1] =
+            c.g;
+
+          pixels[index + 2] =
+            c.b;
+
+          pixels[index + 3] =
             Math.round(
               255 * opacity
             );
-
-
-          // Write a tiny 2x2 area
-
-          for (
-            let yy = y;
-            yy < Math.min(
-              y + sample,
-              height
-            );
-            yy++
-          ) {
-
-            for (
-              let xx = x;
-              xx < Math.min(
-                x + sample,
-                width
-              );
-              xx++
-            ) {
-
-              const index =
-                (
-                  yy * width +
-                  xx
-                ) * 4;
-
-
-              pixels[index] =
-                c.r;
-
-              pixels[index + 1] =
-                c.g;
-
-              pixels[index + 2] =
-                c.b;
-
-              pixels[index + 3] =
-                alpha;
-            }
-          }
         }
       }
 
 
-      rawCtx.putImageData(
+      fieldCtx.putImageData(
         image,
         0,
         0
@@ -810,63 +803,35 @@ const SmoothRainLayer =
 
 
       // ------------------------------------------------------
-      // SECOND PASS — METEOROLOGICAL SMOOTHING
+      // SMOOTH UPSCALE
       // ------------------------------------------------------
-
-      ctx.clearRect(
-        0,
-        0,
-        width,
-        height
-      );
-
 
       ctx.save();
 
 
-      // Gentle Gaussian-style canvas blur.
-      // This removes the remaining grid impression.
+      // Browser interpolation makes the rainfall field
+      // continuous rather than showing source-grid squares.
+
+      ctx.imageSmoothingEnabled =
+        true;
+
+
+      ctx.imageSmoothingQuality =
+        "high";
+
+
+      // Very gentle blur removes remaining pixel edges.
 
       ctx.filter =
-        "blur(7px)";
-
-
-      ctx.globalAlpha =
-        0.96;
+        "blur(2.5px)";
 
 
       ctx.drawImage(
-        raw,
+        field,
         0,
-        0
-      );
-
-
-      ctx.restore();
-
-
-      // ------------------------------------------------------
-      // THIRD PASS — VERY LIGHT CORE DETAIL
-      // ------------------------------------------------------
-
-      // Add a slightly sharper low-alpha layer so that
-      // intense rainfall cores remain clearly visible.
-
-      ctx.save();
-
-
-      ctx.globalAlpha =
-        0.20;
-
-
-      ctx.filter =
-        "blur(2px)";
-
-
-      ctx.drawImage(
-        raw,
         0,
-        0
+        displayWidth,
+        displayHeight
       );
 
 
@@ -876,7 +841,7 @@ const SmoothRainLayer =
 
 
 // ============================================================
-// DRAW MAP
+// DRAW
 // ============================================================
 
 function drawRainfall() {
@@ -964,6 +929,10 @@ function prepareGrid() {
     new Map();
 
 
+  lats = [];
+  lons = [];
+
+
   const grid =
     data.grid || [];
 
@@ -973,11 +942,8 @@ function prepareGrid() {
   }
 
 
-  // Build exact unique coordinate arrays
-
   const latSet =
     new Set();
-
 
   const lonSet =
     new Set();
@@ -994,30 +960,27 @@ function prepareGrid() {
 
 
       if (
-        Number.isFinite(lat) &&
-        Number.isFinite(lon)
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lon)
       ) {
-
-        latSet.add(
-          lat
-        );
-
-        lonSet.add(
-          lon
-        );
-
-
-        const key =
-          lat.toFixed(4) +
-          "," +
-          lon.toFixed(4);
-
-
-        gridLookup.set(
-          key,
-          point
-        );
+        return;
       }
+
+
+      latSet.add(lat);
+      lonSet.add(lon);
+
+
+      const key =
+        lat.toFixed(4) +
+        "," +
+        lon.toFixed(4);
+
+
+      gridLookup.set(
+        key,
+        point
+      );
     }
   );
 
@@ -1032,25 +995,6 @@ function prepareGrid() {
     [...lonSet].sort(
       (a, b) => a - b
     );
-}
-
-
-// ============================================================
-// PERIOD CONTROL
-// ============================================================
-
-const periodControl =
-  document.querySelector(
-    "#period"
-  );
-
-
-if (periodControl) {
-
-  periodControl.addEventListener(
-    "change",
-    drawRainfall
-  );
 }
 
 
@@ -1075,7 +1019,26 @@ document
 
 
 // ============================================================
-// OPACITY CONTROL
+// PERIOD
+// ============================================================
+
+const periodControl =
+  document.querySelector(
+    "#period"
+  );
+
+
+if (periodControl) {
+
+  periodControl.addEventListener(
+    "change",
+    drawRainfall
+  );
+}
+
+
+// ============================================================
+// TRANSPARENCY
 // ============================================================
 
 const opacityControl =
@@ -1086,7 +1049,8 @@ const opacityControl =
 
 if (opacityControl) {
 
-  // Label-friendly default
+  // Default opacity.
+  // Lower value keeps labels and boundaries visible.
 
   opacityControl.value =
     "0.60";
@@ -1114,9 +1078,8 @@ fetch(
       if (!response.ok) {
 
         throw new Error(
-          "Rainfall data could not be loaded"
+          "Unable to load data.json"
         );
-
       }
 
       return response.json();
@@ -1147,12 +1110,12 @@ fetch(
 
       prepareGrid();
 
-
       buildLegend();
-
 
       drawRainfall();
 
+
+      // Give Leaflet time to finish layout
 
       setTimeout(
         () => {
@@ -1162,7 +1125,7 @@ fetch(
           drawRainfall();
 
         },
-        500
+        400
       );
     }
   )
@@ -1192,7 +1155,7 @@ fetch(
 
 
 // ============================================================
-// WINDOW RESIZE
+// RESIZE
 // ============================================================
 
 window.addEventListener(
