@@ -24,3 +24,48 @@ section{min-width:0}
 .wind-toggle{font-weight:700}
 .wind-note{font-size:10px;line-height:1.4;color:#66717d;margin-top:5px}
 #windSourceWrap select{margin-top:5px}
+
+/* Mouse-over rainfall value */
+.rain-tooltip {
+  position: absolute;
+  z-index: 1000;
+  min-width: 185px;
+  max-width: 245px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.96);
+  color: #17212b;
+  box-shadow: 0 3px 14px rgba(0,0,0,.22);
+  border: 1px solid rgba(0,0,0,.12);
+  font: 12px/1.35 Arial,sans-serif;
+  pointer-events: none;
+}
+.rain-tooltip-title {
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+.rain-tooltip-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 5px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #ddd;
+}
+.rain-tooltip-main b {
+  font-size: 17px;
+}
+.rain-tooltip-main span,
+.rain-tooltip small {
+  color: #66717d;
+}
+.rain-tooltip > div:not(.rain-tooltip-title):not(.rain-tooltip-main) {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rain-tooltip small {
+  display: block;
+  margin-top: 5px;
+}
