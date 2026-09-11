@@ -1,6 +1,6 @@
 // ============================================================
-// MASRAINMAN — FAST SMOOTH 6-HOURLY RAINFALL MAP
-// Optimized smooth rendering
+// MASRAINMAN — FAST + MODERATELY SMOOTH 6-HOURLY RAINFALL
+// V4
 // ============================================================
 
 const levels = [
@@ -75,7 +75,7 @@ L.tileLayer(
 
 
 // ============================================================
-// DATA VARIABLES
+// VARIABLES
 // ============================================================
 
 let data = null;
@@ -88,7 +88,7 @@ let gridLookup = new Map();
 
 
 // ============================================================
-// RGB COLORS
+// RGB
 // ============================================================
 
 function hexToRgb(hex) {
@@ -107,7 +107,7 @@ const rgbColors =
 
 
 // ============================================================
-// SELECTED MODELS
+// MODEL SELECTION
 // ============================================================
 
 function getSelectedModels() {
@@ -116,50 +116,6 @@ function getSelectedModels() {
     ...document.querySelectorAll(".model:checked")
   ].map(
     el => el.value
-  );
-}
-
-
-// ============================================================
-// MODEL MEAN
-// ============================================================
-
-function pointValue(point, period, models) {
-
-  if (!point) {
-    return null;
-  }
-
-  const values = [];
-
-  models.forEach(model => {
-
-    const arr =
-      point.models &&
-      point.models[model];
-
-    if (
-      arr &&
-      Number.isFinite(
-        Number(arr[period])
-      )
-    ) {
-
-      values.push(
-        Number(arr[period])
-      );
-    }
-  });
-
-  if (!values.length) {
-    return null;
-  }
-
-  return (
-    values.reduce(
-      (a, b) => a + b,
-      0
-    ) / values.length
   );
 }
 
@@ -184,27 +140,23 @@ function getPoint(latIndex, lonIndex) {
     "," +
     lons[lonIndex].toFixed(4);
 
-  return (
-    gridLookup.get(key) ||
-    null
-  );
+  return gridLookup.get(key) || null;
 }
 
 
 // ============================================================
-// FIND LOWER GRID INDEX
+// LOWER GRID INDEX
 // ============================================================
 
 function lowerIndex(array, value) {
 
-  if (
-    value <= array[0]
-  ) {
+  if (value <= array[0]) {
     return 0;
   }
 
   if (
-    value >= array[array.length - 1]
+    value >=
+    array[array.length - 1]
   ) {
     return array.length - 2;
   }
@@ -215,21 +167,14 @@ function lowerIndex(array, value) {
   while (low <= high) {
 
     const mid =
-      Math.floor(
-        (low + high) / 2
-      );
+      (low + high) >> 1;
 
     if (
       array[mid] <= value
     ) {
-
-      low =
-        mid + 1;
-
+      low = mid + 1;
     } else {
-
-      high =
-        mid - 1;
+      high = mid - 1;
     }
   }
 
@@ -244,14 +189,96 @@ function lowerIndex(array, value) {
 
 
 // ============================================================
+// PREPARE SELECTED MODEL FIELD
+// ============================================================
+
+function buildField(
+  period,
+  models
+) {
+
+  const field = [];
+
+  for (
+    let y = 0;
+    y < lats.length;
+    y++
+  ) {
+
+    const row = [];
+
+    for (
+      let x = 0;
+      x < lons.length;
+      x++
+    ) {
+
+      const point =
+        getPoint(y, x);
+
+      if (!point) {
+
+        row.push(null);
+
+        continue;
+      }
+
+
+      const values = [];
+
+
+      models.forEach(
+        model => {
+
+          const arr =
+            point.models &&
+            point.models[model];
+
+          if (
+            arr &&
+            Number.isFinite(
+              Number(arr[period])
+            )
+          ) {
+
+            values.push(
+              Number(arr[period])
+            );
+          }
+        }
+      );
+
+
+      if (!values.length) {
+
+        row.push(null);
+
+      } else {
+
+        row.push(
+          values.reduce(
+            (a, b) => a + b,
+            0
+          ) / values.length
+        );
+      }
+    }
+
+    field.push(row);
+  }
+
+  return field;
+}
+
+
+// ============================================================
 // FAST BILINEAR INTERPOLATION
 // ============================================================
 
-function interpolateRainfall(
+function interpolate(
+  field,
   lat,
-  lon,
-  period,
-  models
+  lon
 ) {
 
   if (
@@ -262,6 +289,7 @@ function interpolateRainfall(
   ) {
     return null;
   }
+
 
   const yi =
     lowerIndex(
@@ -275,6 +303,7 @@ function interpolateRainfall(
       lon
     );
 
+
   const y0 =
     lats[yi];
 
@@ -287,13 +316,15 @@ function interpolateRainfall(
   const x1 =
     lons[xi + 1];
 
-  let fy =
-    (lat - y0) /
-    (y1 - y0);
 
   let fx =
     (lon - x0) /
     (x1 - x0);
+
+  let fy =
+    (lat - y0) /
+    (y1 - y0);
+
 
   fx =
     Math.max(
@@ -309,50 +340,17 @@ function interpolateRainfall(
 
 
   const q11 =
-    pointValue(
-      getPoint(yi, xi),
-      period,
-      models
-    );
+    field[yi][xi];
 
   const q21 =
-    pointValue(
-      getPoint(yi, xi + 1),
-      period,
-      models
-    );
+    field[yi][xi + 1];
 
   const q12 =
-    pointValue(
-      getPoint(yi + 1, xi),
-      period,
-      models
-    );
+    field[yi + 1][xi];
 
   const q22 =
-    pointValue(
-      getPoint(yi + 1, xi + 1),
-      period,
-      models
-    );
+    field[yi + 1][xi + 1];
 
-
-  const values = [
-    q11,
-    q21,
-    q12,
-    q22
-  ].filter(
-    v => v !== null
-  );
-
-
-  if (!values.length) {
-    return null;
-  }
-
-
-  // Missing corner fallback
 
   if (
     q11 === null ||
@@ -361,17 +359,32 @@ function interpolateRainfall(
     q22 === null
   ) {
 
+    const values = [
+      q11,
+      q21,
+      q12,
+      q22
+    ].filter(
+      v => v !== null
+    );
+
+
+    if (!values.length) {
+      return null;
+    }
+
+
     return (
       values.reduce(
         (a, b) => a + b,
         0
-      ) /
-      values.length
+      ) / values.length
     );
   }
 
 
-  // Smooth-step interpolation
+  // Moderate smoothing.
+  // Much less than the previous version.
 
   fx =
     fx * fx * (3 - 2 * fx);
@@ -383,6 +396,7 @@ function interpolateRainfall(
   const top =
     q11 * (1 - fx) +
     q21 * fx;
+
 
   const bottom =
     q12 * (1 - fx) +
@@ -397,7 +411,7 @@ function interpolateRainfall(
 
 
 // ============================================================
-// CONTINUOUS RAINFALL COLOUR
+// COLOUR
 // ============================================================
 
 function rainfallColor(value) {
@@ -422,6 +436,7 @@ function rainfallColor(value) {
 
 
   let i = 0;
+
 
   while (
     i < levels.length - 1 &&
@@ -450,43 +465,43 @@ function rainfallColor(value) {
     );
 
 
-  // Smooth colour transition
+  // Very mild colour smoothing
 
   t =
     t * t * (3 - 2 * t);
 
 
-  const c1 =
+  const a =
     rgbColors[i];
 
-  const c2 =
+  const b =
     rgbColors[i + 1];
 
 
   return {
     r: Math.round(
-      c1.r +
-      (c2.r - c1.r) * t
+      a.r +
+      (b.r - a.r) * t
     ),
 
     g: Math.round(
-      c1.g +
-      (c2.g - c1.g) * t
+      a.g +
+      (b.g - a.g) * t
     ),
 
     b: Math.round(
-      c1.b +
-      (c2.b - c1.b) * t
+      a.b +
+      (b.b - a.b) * t
     )
   };
 }
 
 
 // ============================================================
-// SMOOTH RAINFALL CANVAS
+// RAINFALL CANVAS
 // ============================================================
 
-const SmoothRainLayer =
+const RainLayer =
   L.Layer.extend({
 
     onAdd: function(map) {
@@ -509,12 +524,6 @@ const SmoothRainLayer =
 
       this._canvas.style.top =
         "0px";
-
-      this._canvas.style.width =
-        "100%";
-
-      this._canvas.style.height =
-        "100%";
 
       this._canvas.style.pointerEvents =
         "none";
@@ -573,13 +582,13 @@ const SmoothRainLayer =
         this._map.getSize();
 
 
-      const displayWidth =
+      const width =
         Math.max(
           1,
           size.x
         );
 
-      const displayHeight =
+      const height =
         Math.max(
           1,
           size.y
@@ -591,10 +600,16 @@ const SmoothRainLayer =
 
 
       canvas.width =
-        displayWidth;
+        width;
 
       canvas.height =
-        displayHeight;
+        height;
+
+      canvas.style.width =
+        width + "px";
+
+      canvas.style.height =
+        height + "px";
 
 
       const ctx =
@@ -606,8 +621,8 @@ const SmoothRainLayer =
       ctx.clearRect(
         0,
         0,
-        displayWidth,
-        displayHeight
+        width,
+        height
       );
 
 
@@ -637,42 +652,50 @@ const SmoothRainLayer =
 
 
       // ------------------------------------------------------
-      // LOW RESOLUTION METEOROLOGICAL FIELD
+      // BUILD SOURCE FIELD ONCE
       // ------------------------------------------------------
 
-      // This is the key performance improvement.
-      //
-      // We calculate only 360 × 220 values rather than
-      // calculating hundreds of thousands of screen pixels.
-
-      const FIELD_WIDTH = 360;
-
-      const FIELD_HEIGHT = 220;
-
-
       const field =
+        buildField(
+          period,
+          models
+        );
+
+
+      // ------------------------------------------------------
+      // SMALL DISPLAY FIELD
+      // ------------------------------------------------------
+
+      // Much smaller than the previous version.
+      // This is deliberately designed for speed.
+
+      const FW = 220;
+      const FH = 132;
+
+
+      const small =
         document.createElement(
           "canvas"
         );
 
 
-      field.width =
-        FIELD_WIDTH;
+      small.width =
+        FW;
 
-      field.height =
-        FIELD_HEIGHT;
+      small.height =
+        FH;
 
 
-      const fieldCtx =
-        field.getContext(
+      const smallCtx =
+        small.getContext(
           "2d"
         );
 
 
       const image =
-        fieldCtx.createImageData(
-          FIELD_WIDTH,
-          FIELD_HEIGHT
+        smallCtx.createImageData(
+          FW,
+          FH
         );
 
 
@@ -692,25 +715,25 @@ const SmoothRainLayer =
 
 
       // ------------------------------------------------------
-      // CALCULATE EACH FIELD ROW
+      // RENDER SMALL FIELD
       // ------------------------------------------------------
 
       for (
         let y = 0;
-        y < FIELD_HEIGHT;
+        y < FH;
         y++
       ) {
 
         const screenY =
           (
             y /
-            (FIELD_HEIGHT - 1)
+            (FH - 1)
           ) *
-          displayHeight;
+          height;
 
 
-        // Only one Leaflet coordinate conversion
-        // per row instead of one per pixel.
+        // Only one geographic conversion
+        // per row.
 
         const rowLat =
           this._map
@@ -719,19 +742,18 @@ const SmoothRainLayer =
                 0,
                 screenY
               )
-            )
-            .lat;
+            ).lat;
 
 
         for (
           let x = 0;
-          x < FIELD_WIDTH;
+          x < FW;
           x++
         ) {
 
           const fraction =
             x /
-            (FIELD_WIDTH - 1);
+            (FW - 1);
 
 
           const lon =
@@ -743,11 +765,10 @@ const SmoothRainLayer =
 
 
           const value =
-            interpolateRainfall(
+            interpolate(
+              field,
               rowLat,
-              lon,
-              period,
-              models
+              lon
             );
 
 
@@ -772,8 +793,7 @@ const SmoothRainLayer =
 
           const index =
             (
-              y *
-              FIELD_WIDTH +
+              y * FW +
               x
             ) * 4;
 
@@ -795,7 +815,7 @@ const SmoothRainLayer =
       }
 
 
-      fieldCtx.putImageData(
+      smallCtx.putImageData(
         image,
         0,
         0
@@ -803,35 +823,33 @@ const SmoothRainLayer =
 
 
       // ------------------------------------------------------
-      // SMOOTH UPSCALE
+      // UPSCALE — NO HEAVY BLUR
       // ------------------------------------------------------
 
       ctx.save();
 
-
-      // Browser interpolation makes the rainfall field
-      // continuous rather than showing source-grid squares.
 
       ctx.imageSmoothingEnabled =
         true;
 
 
       ctx.imageSmoothingQuality =
-        "high";
+        "medium";
 
 
-      // Very gentle blur removes remaining pixel edges.
+      // No Gaussian blur.
+      // This keeps rainfall cores sharper.
 
       ctx.filter =
-        "blur(2.5px)";
+        "none";
 
 
       ctx.drawImage(
-        field,
+        small,
         0,
         0,
-        displayWidth,
-        displayHeight
+        width,
+        height
       );
 
 
@@ -863,7 +881,7 @@ function drawRainfall() {
 
 
   rainLayer =
-    new SmoothRainLayer();
+    new RainLayer();
 
 
   rainLayer.addTo(
@@ -920,6 +938,132 @@ function buildLegend() {
 
 
 // ============================================================
+// MODEL RUN DISPLAY
+// ============================================================
+
+function getRunHour(
+  timestamp,
+  intervalHours
+) {
+
+  if (!timestamp) {
+    return "--Z";
+  }
+
+
+  const d =
+    new Date(timestamp);
+
+
+  if (
+    Number.isNaN(
+      d.getTime()
+    )
+  ) {
+    return "--Z";
+  }
+
+
+  const hour =
+    d.getUTCHours();
+
+
+  const cycle =
+    Math.floor(
+      hour / intervalHours
+    ) * intervalHours;
+
+
+  return (
+    String(cycle)
+      .padStart(2, "0") +
+    "Z"
+  );
+}
+
+
+function buildRunText() {
+
+  if (!data || !data.updated) {
+    return "";
+  }
+
+
+  const ecmwf =
+    getRunHour(
+      data.updated,
+      6
+    );
+
+
+  const gfs =
+    getRunHour(
+      data.updated,
+      6
+    );
+
+
+  const icon =
+    getRunHour(
+      data.updated,
+      6
+    );
+
+
+  const gem =
+    getRunHour(
+      data.updated,
+      12
+    );
+
+
+  return (
+    "Runs: " +
+    "ECMWF " + ecmwf +
+    " • GEM " + gem +
+    " • GFS " + gfs +
+    " • ICON " + icon +
+    " UTC"
+  );
+}
+
+
+// ============================================================
+// TOP INFORMATION
+// ============================================================
+
+function updateHeader() {
+
+  const time =
+    document.querySelector(
+      "#time"
+    );
+
+
+  if (!time || !data) {
+    return;
+  }
+
+
+  const runText =
+    buildRunText();
+
+
+  time.textContent =
+    "Updated: " +
+    (
+      data.updated ||
+      "Latest update"
+    ) +
+    (
+      runText
+        ? "  •  " + runText
+        : ""
+    );
+}
+
+
+// ============================================================
 // PREPARE GRID
 // ============================================================
 
@@ -927,7 +1071,6 @@ function prepareGrid() {
 
   gridLookup =
     new Map();
-
 
   lats = [];
   lons = [];
@@ -1019,7 +1162,7 @@ document
 
 
 // ============================================================
-// PERIOD
+// PERIOD CONTROL
 // ============================================================
 
 const periodControl =
@@ -1038,7 +1181,7 @@ if (periodControl) {
 
 
 // ============================================================
-// TRANSPARENCY
+// OPACITY
 // ============================================================
 
 const opacityControl =
@@ -1049,11 +1192,10 @@ const opacityControl =
 
 if (opacityControl) {
 
-  // Default opacity.
-  // Lower value keeps labels and boundaries visible.
+  // Moderate transparency
 
   opacityControl.value =
-    "0.60";
+    "0.62";
 
 
   opacityControl.addEventListener(
@@ -1094,28 +1236,14 @@ fetch(
         json;
 
 
-      const time =
-        document.querySelector(
-          "#time"
-        );
-
-
-      if (time) {
-
-        time.textContent =
-          data.updated ||
-          "Latest update";
-      }
-
-
       prepareGrid();
 
       buildLegend();
 
+      updateHeader();
+
       drawRainfall();
 
-
-      // Give Leaflet time to finish layout
 
       setTimeout(
         () => {
@@ -1125,7 +1253,7 @@ fetch(
           drawRainfall();
 
         },
-        400
+        250
       );
     }
   )
