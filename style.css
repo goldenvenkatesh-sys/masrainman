@@ -1,1 +1,428 @@
-:root{font-family:Arial,sans-serif;color:#222}*{box-sizing:border-box}body{margin:0;background:#fff}header{padding:12px 18px;background:#fff;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center}h1{margin:0;font-size:22px;font-weight:800}#time{font-size:13px;color:#666}main{display:grid;grid-template-columns:270px 1fr;height:calc(100vh - 58px)}aside{padding:16px;background:#fafafa;border-right:1px solid #ddd;overflow:auto}aside h2{margin-top:0;font-size:18px}label{display:block;margin:11px 0;font-size:14px}select,input[type=range]{width:100%;margin-top:6px}hr{border:0;border-top:1px solid #ddd;margin:18px 0}.note{font-size:11px;color:#666;line-height:1.4}section{position:relative;min-width:0}#map{width:100%;height:100%}#legend{position:absolute;right:12px;bottom:18px;z-index:999;background:rgba(255,255,255,.94);padding:9px;border-radius:5px;box-shadow:0 1px 5px #999;font-size:11px;max-width:250px}.lg{display:inline-block;width:22px;height:12px;margin-right:3px;vertical-align:middle}@media(max-width:700px){main{grid-template-columns:1fr;height:auto}aside{border-right:0;border-bottom:1px solid #ddd}#map{height:70vh}}
+/* ============================================================
+   MASRAINMAN 6-HOURLY RAINFALL
+   BLOGGER-SAFE DASHBOARD CSS
+   ============================================================ */
+
+:root {
+  font-family: Arial, sans-serif;
+  color: #222;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+
+/* ============================================================
+   BODY
+   ============================================================ */
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+}
+
+
+/* ============================================================
+   WEATHER APP CONTAINER
+   ============================================================ */
+
+#rainfall-app {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  background: #fff;
+  overflow: hidden;
+}
+
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+
+#rainfall-header {
+  width: 100%;
+  min-height: 58px;
+
+  padding: 12px 18px;
+
+  background: #fff;
+
+  border-bottom: 1px solid #ddd;
+
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  gap: 15px;
+}
+
+
+#rainfall-header h1 {
+  margin: 0;
+
+  font-size: 22px;
+
+  font-weight: 800;
+
+  line-height: 1.2;
+}
+
+
+#time {
+  font-size: 13px;
+
+  color: #555;
+
+  font-weight: 600;
+
+  text-align: right;
+
+  white-space: nowrap;
+}
+
+
+/* ============================================================
+   MAIN DASHBOARD
+   ============================================================ */
+
+/*
+   IMPORTANT:
+   Do NOT use 100vh here.
+
+   The dashboard is embedded inside Blogger,
+   so it must occupy only its own section of the page.
+*/
+
+#rainfall-main {
+  width: 100%;
+
+  display: grid;
+
+  grid-template-columns: 270px minmax(0, 1fr);
+
+  min-height: 0;
+
+  height: 700px;
+
+  max-height: 700px;
+}
+
+
+/* ============================================================
+   CONTROL PANEL
+   ============================================================ */
+
+#controls {
+  padding: 16px;
+
+  background: #fafafa;
+
+  border-right: 1px solid #ddd;
+
+  overflow-y: auto;
+
+  overflow-x: hidden;
+}
+
+
+#controls h2 {
+  margin-top: 0;
+
+  margin-bottom: 15px;
+
+  font-size: 18px;
+}
+
+
+#controls label {
+  display: block;
+
+  margin: 11px 0;
+
+  font-size: 14px;
+
+  line-height: 1.35;
+}
+
+
+#controls select {
+  display: block;
+
+  width: 100%;
+
+  margin-top: 6px;
+
+  padding: 5px;
+
+  font-size: 14px;
+}
+
+
+#controls input[type="range"] {
+  display: block;
+
+  width: 100%;
+
+  margin-top: 7px;
+}
+
+
+#controls hr {
+  border: 0;
+
+  border-top: 1px solid #ddd;
+
+  margin: 18px 0;
+}
+
+
+.note {
+  margin-top: 18px;
+
+  font-size: 11px;
+
+  color: #666;
+
+  line-height: 1.4;
+}
+
+
+/* ============================================================
+   MAP SECTION
+   ============================================================ */
+
+#map-section {
+  position: relative;
+
+  min-width: 0;
+
+  min-height: 0;
+
+  width: 100%;
+
+  height: 700px;
+
+  overflow: hidden;
+}
+
+
+/* ============================================================
+   LEAFLET MAP
+   ============================================================ */
+
+#map {
+  width: 100%;
+
+  height: 700px;
+
+  min-height: 0;
+}
+
+
+/* ============================================================
+   LEGEND
+   ============================================================ */
+
+#legend {
+  position: absolute;
+
+  right: 12px;
+
+  bottom: 18px;
+
+  z-index: 999;
+
+  background: rgba(255, 255, 255, 0.94);
+
+  padding: 9px;
+
+  border-radius: 5px;
+
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
+
+  font-size: 11px;
+
+  max-width: 250px;
+
+  max-height: calc(100% - 36px);
+
+  overflow-y: auto;
+}
+
+
+.lg {
+  display: inline-block;
+
+  width: 22px;
+
+  height: 12px;
+
+  margin-right: 3px;
+
+  vertical-align: middle;
+}
+
+
+/* ============================================================
+   LEAFLET CONTROLS
+   ============================================================ */
+
+.leaflet-control-container {
+  font-family: Arial, sans-serif;
+}
+
+
+/* ============================================================
+   TABLET
+   ============================================================ */
+
+@media (max-width: 900px) {
+
+  #rainfall-main {
+    grid-template-columns: 220px minmax(0, 1fr);
+
+    height: 650px;
+
+    max-height: 650px;
+  }
+
+  #map-section {
+    height: 650px;
+  }
+
+  #map {
+    height: 650px;
+  }
+
+  #rainfall-header h1 {
+    font-size: 20px;
+  }
+
+  #time {
+    font-size: 12px;
+  }
+}
+
+
+/* ============================================================
+   MOBILE
+   ============================================================ */
+
+@media (max-width: 700px) {
+
+  #rainfall-header {
+    min-height: auto;
+
+    padding: 10px 12px;
+
+    flex-direction: column;
+
+    align-items: flex-start;
+
+    gap: 5px;
+  }
+
+
+  #rainfall-header h1 {
+    font-size: 19px;
+  }
+
+
+  #time {
+    font-size: 11px;
+
+    text-align: left;
+
+    white-space: normal;
+  }
+
+
+  #rainfall-main {
+    display: block;
+
+    height: auto;
+
+    max-height: none;
+  }
+
+
+  #controls {
+    width: 100%;
+
+    border-right: 0;
+
+    border-bottom: 1px solid #ddd;
+
+    padding: 12px;
+  }
+
+
+  #controls h2 {
+    margin-bottom: 10px;
+  }
+
+
+  #map-section {
+    width: 100%;
+
+    height: 70vh;
+
+    min-height: 450px;
+
+    max-height: 650px;
+  }
+
+
+  #map {
+    width: 100%;
+
+    height: 70vh;
+
+    min-height: 450px;
+
+    max-height: 650px;
+  }
+
+
+  #legend {
+    right: 8px;
+
+    bottom: 8px;
+
+    max-width: 180px;
+
+    font-size: 10px;
+  }
+}
+
+
+/* ============================================================
+   VERY SMALL PHONES
+   ============================================================ */
+
+@media (max-width: 420px) {
+
+  #map-section {
+    height: 60vh;
+
+    min-height: 400px;
+  }
+
+
+  #map {
+    height: 60vh;
+
+    min-height: 400px;
+  }
+
+
+  #legend {
+    max-width: 150px;
+
+    font-size: 9px;
+  }
+}
