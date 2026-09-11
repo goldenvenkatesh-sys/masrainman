@@ -32,6 +32,8 @@ const state = {
   selectedModels: new Set(["ECMWF HRES", "GEM", "GFS", "ICON"]),
   windEnabled: false,
   windSource: "blend",
+  rainSet: "standard",
+  aifsModel: "ECMWF AIFS",
   hoverRaf: 0,
   hoverPoint: null,
 };
@@ -79,6 +81,24 @@ function ensureUi() {
     else aside.appendChild(details);
   }
 
+  const aifsModels = state.data?.aifs_models || [
+    "ECMWF AIFS",
+    "NOAA AIGFS",
+    "ECMWF IFS",
+    "Google WeatherNext 2"
+  ];
+  const aifsSelect = $("aifsModel");
+  if (aifsSelect) {
+    aifsSelect.innerHTML = "";
+    aifsModels.forEach(model => {
+      const opt = document.createElement("option");
+      opt.value = model;
+      opt.textContent = model;
+      aifsSelect.appendChild(opt);
+    });
+    aifsSelect.value = state.aifsModel;
+  }
+
   const note = aside.querySelector(".note");
   if (note) {
     note.innerHTML =
@@ -113,6 +133,20 @@ function ensureUi() {
   }
 }
 
+function updateWindControls() {
+  const wind = $("wind850");
+  const wrap = $("windSourceWrap");
+  if (!wind || !wrap) return;
+  if (state.rainSet === "aifs") {
+    wind.checked = false;
+    wind.disabled = true;
+    state.windEnabled = false;
+    wrap.style.display = "none";
+  } else {
+    wind.disabled = false;
+  }
+}
+
 function getSelectedModels() {
   const boxes = document.querySelectorAll("input.model");
   const selected = [];
@@ -130,6 +164,26 @@ function setupControls() {
       drawRainfall();
     });
   });
+
+  document.querySelectorAll("input[name=rainSet]").forEach(box => {
+    box.addEventListener("change", () => {
+      state.rainSet = box.value;
+      const wrap = $("aifsModelWrap");
+      if (wrap) wrap.style.display = state.rainSet === "aifs" ? "block" : "none";
+      updateHeader();
+      updateWindControls();
+      drawRainfall();
+    });
+  });
+
+  const aifsModel = $("aifsModel");
+  if (aifsModel) {
+    aifsModel.addEventListener("change", () => {
+      state.aifsModel = aifsModel.value;
+      updateHeader();
+      drawRainfall();
+    });
+  }
 
   const day = $("period");
   if (day) {
@@ -219,7 +273,10 @@ function updateHeader() {
     validText = `${formatIST(range.start)} IST – ${formatIST(range.end)} IST`;
   }
 
-  time.innerHTML = `<b>Model Run:</b> ${runText} &nbsp; | &nbsp; <b>Valid:</b> Day ${state.selectedDay + 1} &nbsp; ${validText}`;
+  const sourceText = state.rainSet === "aifs"
+    ? `AIFS Set — ${state.aifsModel}`
+    : "Standard model blend";
+  time.innerHTML = `<b>Model Run:</b> ${runText} &nbsp; | &nbsp; <b>Valid:</b> Day ${state.selectedDay + 1} &nbsp; ${validText} &nbsp; | &nbsp; <b>Source:</b> ${escapeHtml(sourceText)}`;
 
   const runInfo = $("runInfo");
   if (runInfo) {
@@ -230,12 +287,21 @@ function updateHeader() {
       return `<div class="run-model-row"><span>${escapeHtml(model)}</span><b>${available}</b></div>`;
     }).join("");
 
+    const aifsHorizons = state.data.aifs_model_horizons || {};
+    const aifsRows = (state.data.aifs_models || []).map(model => {
+      const days = aifsHorizons[model];
+      const available = Number.isFinite(days) ? `Day 1–${days}` : "Available";
+      return `<div class="run-model-row"><span>${escapeHtml(model)}</span><b>${available}</b></div>`;
+    }).join("");
+
     runInfo.innerHTML =
       `<div class="run-main"><span>Run</span><b>${runText}</b></div>` +
       `<div class="run-main"><span>Valid period</span><b>Day ${state.selectedDay + 1}</b></div>` +
       `<div class="run-valid">${validText}</div>` +
-      `<div class="run-subtitle">Model availability</div>` +
-      modelRows;
+      `<div class="run-subtitle">Standard model availability</div>` +
+      modelRows +
+      `<div class="run-subtitle">AIFS Set availability</div>` +
+      aifsRows;
   }
 }
 
@@ -370,6 +436,32 @@ function blendedRain(grid, lat, lon, dayIndex, models) {
   return vals.reduce((a,b) => a+b, 0) / vals.length;
 }
 
+function bilinearAifsRain(grid, lat, lon, model, dayIndex) {
+  const b = bracketPoint(grid, lat, lon);
+  if (!b) return null;
+  const vals = [
+    b.p00?.aifs?.[model]?.[dayIndex],
+    b.p01?.aifs?.[model]?.[dayIndex],
+    b.p10?.aifs?.[model]?.[dayIndex],
+    b.p11?.aifs?.[model]?.[dayIndex],
+  ];
+  if (vals.every(Number.isFinite)) {
+    const top = vals[0] * (1 - b.fx) + vals[1] * b.fx;
+    const bottom = vals[2] * (1 - b.fx) + vals[3] * b.fx;
+    return top * (1 - b.fy) + bottom * b.fy;
+  }
+  const nearest = nearestPoint(grid, lat, lon);
+  const v = nearest?.aifs?.[model]?.[dayIndex];
+  return Number.isFinite(v) ? v : null;
+}
+
+function rainValueAt(grid, lat, lon, dayIndex) {
+  if (state.rainSet === "aifs") {
+    return bilinearAifsRain(grid, lat, lon, state.aifsModel, dayIndex);
+  }
+  return blendedRain(grid, lat, lon, dayIndex, [...state.selectedModels]);
+}
+
 function windAtPoint(grid, lat, lon, dayIndex, source) {
   const point = nearestPoint(grid, lat, lon);
   if (!point || !point.models) return null;
@@ -446,35 +538,31 @@ function updateRainfallHover() {
     return;
   }
 
-  const models = [...state.selectedModels];
-  if (!models.length) {
-    tooltip.style.display = "none";
-    return;
-  }
-
   const grid = buildSourceGrid();
-  const values = models
-    .map(model => ({
-      model,
-      value: bilinearRain(grid, lat, lon, model, state.selectedDay),
-    }))
-    .filter(item => Number.isFinite(item.value));
-
-  if (!values.length) {
-    tooltip.style.display = "none";
-    return;
+  if (state.rainSet === "aifs") {
+    const value = bilinearAifsRain(grid, lat, lon, state.aifsModel, state.selectedDay);
+    if (!Number.isFinite(value)) { tooltip.style.display = "none"; return; }
+    tooltip.innerHTML =
+      `<div class="rain-tooltip-title">${escapeHtml(state.aifsModel)} — Day ${state.selectedDay + 1}</div>` +
+      `<div class="rain-tooltip-main"><b>${value.toFixed(1)} mm</b><span>AIFS Set</span></div>` +
+      `<small>${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E</small>`;
+  } else {
+    const models = [...state.selectedModels];
+    if (!models.length) { tooltip.style.display = "none"; return; }
+    const values = models
+      .map(model => ({ model, value: bilinearRain(grid, lat, lon, model, state.selectedDay) }))
+      .filter(item => Number.isFinite(item.value));
+    if (!values.length) { tooltip.style.display = "none"; return; }
+    const blend = values.reduce((sum, item) => sum + item.value, 0) / values.length;
+    const modelLines = values.map(item =>
+      `<div><span>${escapeHtml(item.model)}</span><b>${item.value.toFixed(1)} mm</b></div>`
+    ).join("");
+    tooltip.innerHTML =
+      `<div class="rain-tooltip-title">Rainfall — Day ${state.selectedDay + 1}</div>` +
+      `<div class="rain-tooltip-main"><b>${blend.toFixed(1)} mm</b><span>selected-model blend</span></div>` +
+      modelLines +
+      `<small>${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E</small>`;
   }
-
-  const blend = values.reduce((sum, item) => sum + item.value, 0) / values.length;
-  const modelLines = values.map(item =>
-    `<div><span>${escapeHtml(item.model)}</span><b>${item.value.toFixed(1)} mm</b></div>`
-  ).join("");
-
-  tooltip.innerHTML =
-    `<div class="rain-tooltip-title">Rainfall — Day ${state.selectedDay + 1}</div>` +
-    `<div class="rain-tooltip-main"><b>${blend.toFixed(1)} mm</b><span>selected-model blend</span></div>` +
-    modelLines +
-    `<small>${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E</small>`;
 
   const mapWidth = mapElWidth();
   const mapHeight = mapElHeight();
@@ -547,7 +635,7 @@ function drawRainfall() {
   const h = canvas.clientHeight;
   const models = [...state.selectedModels];
   ctx.clearRect(0, 0, w, h);
-  if (!models.length) return;
+  if (state.rainSet === "standard" && !models.length) return;
 
   const source = buildSourceGrid();
   const step = RAIN_RENDER_STEP;
@@ -565,7 +653,9 @@ function drawRainfall() {
         lng > state.data.domain.lon_max
       ) continue;
 
-      const value = blendedRain(source, lat, lng, state.selectedDay, models);
+      const value = state.rainSet === "aifs"
+        ? bilinearAifsRain(source, lat, lng, state.aifsModel, state.selectedDay)
+        : blendedRain(source, lat, lng, state.selectedDay, models);
       const color = colorAt(value);
       if (!color) continue;
 
@@ -713,8 +803,11 @@ function scheduleRender() {
 function buildLegend() {
   const legend = $("legend");
   if (!legend) return;
+  const sourceText = state.rainSet === "aifs"
+    ? `AIFS Set — ${escapeHtml(state.aifsModel)}`
+    : "Standard model blend";
   legend.innerHTML =
-    `<div class="legend-title">24-hour rainfall (mm) — stepped display</div>` +
+    `<div class="legend-title">24-hour rainfall (mm) — ${sourceText}</div>` +
     levels.map((v,i) =>
       `<span class="legend-item"><i style="background:${colors[i]}"></i>${v}</span>`
     ).join("");
@@ -727,6 +820,7 @@ async function loadData() {
   ensureUi();
   setupControls();
   getSelectedModels();
+  updateWindControls();
   updateHeader();
   buildLegend();
   drawRainfall();
