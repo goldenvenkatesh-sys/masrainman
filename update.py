@@ -22,7 +22,9 @@ DISPLAY_STEP = 0.5
 FORECAST_DAYS = 12
 BATCH_SIZE = 500
 REQUEST_TIMEOUT = 90
-RETRIES = 5
+RETRIES = 8
+MIN_REQUEST_GAP = 3.0
+AIFS_COOLDOWN = 45.0
 
 MODELS = {
     "ECMWF HRES": "https://api.open-meteo.com/v1/ecmwf",
@@ -67,9 +69,16 @@ def request_json(url, params):
     last_error = None
     for attempt in range(1, RETRIES + 1):
         try:
+            # Small spacing between requests reduces burst-rate 429s from shared
+            # GitHub Actions runner IPs.
+            if attempt == 1:
+                time.sleep(MIN_REQUEST_GAP)
             req = Request(
                 full_url,
-                headers={"User-Agent": "MasRainman/1.0 (GitHub Actions rainfall updater)"},
+                headers={
+                    "User-Agent": "MasRainman/1.1 (GitHub Actions rainfall updater; non-commercial)",
+                    "Accept": "application/json",
+                },
                 method="GET",
             )
             with urlopen(req, timeout=REQUEST_TIMEOUT) as response:
@@ -77,23 +86,31 @@ def request_json(url, params):
         except HTTPError as exc:
             last_error = exc
             if exc.code == 429:
-                wait = min(60, 5 * attempt)
-                print(f"429 rate limit; waiting {wait}s (attempt {attempt}/{RETRIES})")
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                try:
+                    wait = float(retry_after) if retry_after else 0.0
+                except (TypeError, ValueError):
+                    wait = 0.0
+                if wait <= 0:
+                    # Longer exponential backoff is important for Open-Meteo's
+                    # weighted request limits, especially on the Ensemble API.
+                    wait = min(180, 10 * (2 ** (attempt - 1)))
+                wait += 2.0
+                print(f"429 rate limit; waiting {int(wait)}s (attempt {attempt}/{RETRIES})")
                 time.sleep(wait)
                 continue
             if exc.code in (500, 502, 503, 504):
-                wait = min(30, 3 * attempt)
+                wait = min(60, 5 * attempt)
                 print(f"HTTP {exc.code}; waiting {wait}s (attempt {attempt}/{RETRIES})")
                 time.sleep(wait)
                 continue
             raise RuntimeError(f"HTTP {exc.code}: {exc.reason}") from exc
         except (URLError, TimeoutError, json.JSONDecodeError) as exc:
             last_error = exc
-            wait = min(30, 3 * attempt)
+            wait = min(60, 5 * attempt)
             print(f"Request failed: {exc}; waiting {wait}s (attempt {attempt}/{RETRIES})")
             time.sleep(wait)
     raise RuntimeError(f"Request failed after {RETRIES} attempts: {last_error}")
-
 
 def parse_locations(payload):
     return payload if isinstance(payload, list) else [payload]
@@ -159,6 +176,7 @@ def fetch_standard_model(model_name, url, source_points):
         }
         print(f"Batch {start // BATCH_SIZE + 1}: {len(batch)} points")
         locations = parse_locations(request_json(url, params))
+        time.sleep(2.0)
         if len(locations) != len(batch):
             raise RuntimeError(f"{model_name}: API returned {len(locations)} locations for {len(batch)}")
         for point, loc in zip(batch, locations):
@@ -187,6 +205,7 @@ def fetch_aifs_model(label, model_id, source_points):
         }
         print(f"Batch {start // BATCH_SIZE + 1}: {len(batch)} points")
         locations = parse_locations(request_json(AIFS_URL, params))
+        time.sleep(4.0)
         if len(locations) != len(batch):
             raise RuntimeError(f"{label}: API returned {len(locations)} locations for {len(batch)}")
         for point, loc in zip(batch, locations):
@@ -279,6 +298,11 @@ def main():
         first = next(iter(fetched.values()), None)
         model_times[name] = first["times"] if first else []
 
+    # Let the API rate-limit window settle after the four standard-model
+    # downloads before starting the heavier Ensemble API requests.
+    print(f"\nCooling down {int(AIFS_COOLDOWN)}s before AIFS Set requests...")
+    time.sleep(AIFS_COOLDOWN)
+
     aifs_source = {}
     for label, model_id in AIFS_MODELS.items():
         aifs_source[label] = fetch_aifs_model(label, model_id, source_points)
@@ -348,6 +372,7 @@ def main():
     tmp.write_text(json.dumps(out, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     tmp.replace(OUT)
     print(f"Wrote {OUT} ({OUT.stat().st_size / 1024 / 1024:.2f} MB)")
+    print("AIFS Set stored separately; it is not blended with ECMWF HRES/GEM/GFS/ICON.")
 
 
 if __name__ == "__main__":
