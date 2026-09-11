@@ -34,12 +34,12 @@ const state = {
   windSource: "blend",
 };
 
-// Deliberately sharp rainfall rendering:
-// - nearest 0.5° grid cell, not bilinear
-// - stepped colour levels, not continuous colour mixing
-// - no canvas upscaling/interpolation
-const RAIN_CELL_SAMPLING = "nearest";
-const RAIN_RENDER_STEP = 2;
+// Balanced rainfall rendering:
+// - bilinear interpolation across the 0.5° display grid
+// - stepped colour levels, so rainfall bands stay crisp
+// - redraws at the current map viewport, so zooming does not scale a tiny raster
+const RAIN_CELL_SAMPLING = "bilinear";
+const RAIN_RENDER_STEP = 1;
 const WIND_GRID_SPACING_DEG = 2.0;
 const WIND_MIN_KNOTS = 3;
 
@@ -67,7 +67,7 @@ function ensureUi() {
   if (note) {
     note.innerHTML =
       "Rainfall is accumulated for each forecast day. " +
-      "Rainfall display uses sharp 0.5° nearest-grid sampling. " +
+      "Rainfall display uses 0.5° grid bilinear sampling with stepped colours. " +
       "850 hPa wind barbs use 12 UTC representative wind.";
   }
 
@@ -266,17 +266,58 @@ function nearestPoint(grid, lat, lon) {
   return map.get(`${lats[latIndex]}|${lons[lonIndex]}`) || null;
 }
 
-function nearestRain(grid, lat, lon, model, dayIndex) {
-  const point = nearestPoint(grid, lat, lon);
-  const v = point && point.models && point.models[model]
-    ? point.models[model].rain[dayIndex]
-    : null;
+function bracketPoint(grid, lat, lon) {
+  const { lats, lons, map } = grid;
+  if (lats.length < 2 || lons.length < 2) return null;
+
+  const latStep = lats[1] - lats[0];
+  const lonStep = lons[1] - lons[0];
+  const latPos = (lat - lats[0]) / latStep;
+  const lonPos = (lon - lons[0]) / lonStep;
+
+  let i = Math.floor(latPos);
+  let j = Math.floor(lonPos);
+  i = Math.max(0, Math.min(lats.length - 2, i));
+  j = Math.max(0, Math.min(lons.length - 2, j));
+
+  const fy = Math.max(0, Math.min(1, latPos - i));
+  const fx = Math.max(0, Math.min(1, lonPos - j));
+
+  return {
+    p00: map.get(`${lats[i]}|${lons[j]}`),
+    p01: map.get(`${lats[i]}|${lons[j + 1]}`),
+    p10: map.get(`${lats[i + 1]}|${lons[j]}`),
+    p11: map.get(`${lats[i + 1]}|${lons[j + 1]}`),
+    fx, fy,
+  };
+}
+
+function bilinearRain(grid, lat, lon, model, dayIndex) {
+  const b = bracketPoint(grid, lat, lon);
+  if (!b) return null;
+
+  const vals = [
+    b.p00?.models?.[model]?.rain?.[dayIndex],
+    b.p01?.models?.[model]?.rain?.[dayIndex],
+    b.p10?.models?.[model]?.rain?.[dayIndex],
+    b.p11?.models?.[model]?.rain?.[dayIndex],
+  ];
+
+  if (vals.every(Number.isFinite)) {
+    const top = vals[0] * (1 - b.fx) + vals[1] * b.fx;
+    const bottom = vals[2] * (1 - b.fx) + vals[3] * b.fx;
+    return top * (1 - b.fy) + bottom * b.fy;
+  }
+
+  // Graceful fallback for model-horizon edges or missing cells.
+  const nearest = nearestPoint(grid, lat, lon);
+  const v = nearest?.models?.[model]?.rain?.[dayIndex];
   return Number.isFinite(v) ? v : null;
 }
 
 function blendedRain(grid, lat, lon, dayIndex, models) {
   const vals = models
-    .map(model => nearestRain(grid, lat, lon, model, dayIndex))
+    .map(model => bilinearRain(grid, lat, lon, model, dayIndex))
     .filter(v => Number.isFinite(v));
   if (!vals.length) return null;
   return vals.reduce((a,b) => a+b, 0) / vals.length;
@@ -384,8 +425,9 @@ function drawRainfall() {
     }
   }
 
-  // Put the sharp rainfall field directly onto the canvas.
-  // No scaled low-resolution bitmap and no smoothing.
+  // Put the rainfall field directly onto the current-size canvas.
+  // The field is interpolated from the 0.5° model grid, but colours remain
+  // stepped. This avoids large square pixels while keeping a crisp model-grid look.
   ctx.imageSmoothingEnabled = false;
   ctx.putImageData(image, 0, 0);
 
