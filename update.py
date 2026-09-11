@@ -8,22 +8,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 # ============================================================
-# MASRAINMAN — 12-DAY RAINFALL + 850 hPa WIND UPDATER
-# ============================================================
-#
-# Rainfall:
-#   1° source grid -> 0.5° display grid
-#   4 x 6-hour periods are summed into Day 1 ... Day 12
-#
-# Wind:
-#   850 hPa wind speed + direction
-#   Stored as U/V components for each forecast day.
-#   Representative time = 12 UTC for each forecast day.
-#
-# Models:
-#   ECMWF HRES, GEM, GFS, ICON
-#
-# Python standard library only. No requests package required.
+# MasRainman updater
+# Standard models + optional 850 hPa wind + separate AIFS Set
 # ============================================================
 
 BASE = Path(__file__).resolve().parent
@@ -52,6 +38,23 @@ MODEL_HORIZONS = {
     "ICON": 7,
 }
 
+# These are kept as a separate set and are NEVER blended with the
+# four standard models. They are ensemble-mean products so all four
+# can be compared on the same precipitation field.
+AIFS_MODELS = {
+    "ECMWF AIFS": "ecmwf_aifs025_ensemble_mean",
+    "NOAA AIGFS": "ncep_aigefs025_ensemble_mean",
+    "ECMWF IFS": "ecmwf_ifs025_ensemble_mean",
+    "Google WeatherNext 2": "google_weathernext2_ensemble_mean",
+}
+AIFS_MODEL_HORIZONS = {
+    "ECMWF AIFS": 12,
+    "NOAA AIGFS": 12,
+    "ECMWF IFS": 12,
+    "Google WeatherNext 2": 12,
+}
+AIFS_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
+
 
 def frange(start, stop, step):
     n = int(round((stop - start) / step))
@@ -62,34 +65,33 @@ def request_json(url, params):
     query = urlencode(params)
     full_url = f"{url}?{query}"
     last_error = None
-
     for attempt in range(1, RETRIES + 1):
         try:
             req = Request(
                 full_url,
-                headers={
-                    "User-Agent": "MasRainman/1.0 (GitHub Actions rainfall updater)"
-                },
+                headers={"User-Agent": "MasRainman/1.0 (GitHub Actions rainfall updater)"},
                 method="GET",
             )
             with urlopen(req, timeout=REQUEST_TIMEOUT) as response:
                 return json.loads(response.read().decode("utf-8"))
-
         except HTTPError as exc:
             last_error = exc
-            if exc.code in (429, 500, 502, 503, 504):
+            if exc.code == 429:
                 wait = min(60, 5 * attempt)
+                print(f"429 rate limit; waiting {wait}s (attempt {attempt}/{RETRIES})")
+                time.sleep(wait)
+                continue
+            if exc.code in (500, 502, 503, 504):
+                wait = min(30, 3 * attempt)
                 print(f"HTTP {exc.code}; waiting {wait}s (attempt {attempt}/{RETRIES})")
                 time.sleep(wait)
                 continue
             raise RuntimeError(f"HTTP {exc.code}: {exc.reason}") from exc
-
         except (URLError, TimeoutError, json.JSONDecodeError) as exc:
             last_error = exc
             wait = min(30, 3 * attempt)
             print(f"Request failed: {exc}; waiting {wait}s (attempt {attempt}/{RETRIES})")
             time.sleep(wait)
-
     raise RuntimeError(f"Request failed after {RETRIES} attempts: {last_error}")
 
 
@@ -97,64 +99,55 @@ def parse_locations(payload):
     return payload if isinstance(payload, list) else [payload]
 
 
-def to_uv(speed_kmh, direction_deg):
-    """Meteorological direction -> eastward U / northward V."""
-    if speed_kmh is None or direction_deg is None:
-        return None, None
-    try:
-        speed = float(speed_kmh) / 3.6
-        direction = math.radians(float(direction_deg))
-        u = -speed * math.sin(direction)
-        v = -speed * math.cos(direction)
-        return u, v
-    except (TypeError, ValueError):
-        return None, None
-
-
-def six_hour_totals(payload, max_periods):
-    hourly = payload.get("hourly", {})
-    precipitation = hourly.get("precipitation") or []
+def six_hour_totals(loc, max_periods):
+    hourly = loc.get("hourly", {})
+    values = hourly.get("precipitation") or []
     times = hourly.get("time") or []
-    wind_speed = hourly.get("wind_speed_850hPa") or []
-    wind_direction = hourly.get("wind_direction_850hPa") or []
-
     periods = []
     for p in range(max_periods):
         start = 1 + p * 6
-        end = start + 6
-        block = precipitation[start:end]
+        block = values[start:start + 6]
         if len(block) < 6:
             periods.append(None)
         else:
             periods.append(round(sum(float(v or 0.0) for v in block), 2))
+    return periods, times
 
-    # One representative 850 hPa wind for each forecast day: 12 UTC.
-    # Day 1 -> hour 12, Day 2 -> hour 36, etc.
-    wind_u = []
-    wind_v = []
-    for day in range(FORECAST_DAYS):
-        index = 12 + day * 24
-        if index >= len(wind_speed) or index >= len(wind_direction):
-            wind_u.append(None)
-            wind_v.append(None)
+
+def to_uv(speed_kmh, direction_deg):
+    if speed_kmh is None or direction_deg is None:
+        return None
+    speed = float(speed_kmh) / 3.6
+    direction = math.radians(float(direction_deg))
+    # Meteorological direction is FROM; U/V are TOWARD.
+    u = -speed * math.sin(direction)
+    v = -speed * math.cos(direction)
+    return u, v
+
+
+def representative_wind(loc, model_days):
+    hourly = loc.get("hourly", {})
+    speeds = hourly.get("wind_speed_850hPa") or []
+    directions = hourly.get("wind_direction_850hPa") or []
+    winds = []
+    for day in range(model_days):
+        # 12 UTC of each forecast day.
+        idx = 12 + day * 24
+        if idx >= len(speeds) or idx >= len(directions):
+            winds.append(None)
             continue
-        u, v = to_uv(wind_speed[index], wind_direction[index])
-        wind_u.append(round(u, 3) if u is not None else None)
-        wind_v.append(round(v, 3) if v is not None else None)
-
-    return periods, wind_u, wind_v, times
+        winds.append(to_uv(speeds[idx], directions[idx]))
+    return winds
 
 
-def fetch_model(model_name, url, source_points):
+def fetch_standard_model(model_name, url, source_points):
     print(f"\n=== {model_name} ===")
     result = {}
     model_days = MODEL_HORIZONS[model_name]
-
     for start in range(0, len(source_points), BATCH_SIZE):
         batch = source_points[start:start + BATCH_SIZE]
         lats = ",".join(str(p[0]) for p in batch)
         lons = ",".join(str(p[1]) for p in batch)
-
         params = {
             "latitude": lats,
             "longitude": lons,
@@ -164,28 +157,45 @@ def fetch_model(model_name, url, source_points):
             "precipitation_unit": "mm",
             "wind_speed_unit": "kmh",
         }
-
         print(f"Batch {start // BATCH_SIZE + 1}: {len(batch)} points")
-        payload = request_json(url, params)
-        locations = parse_locations(payload)
-
+        locations = parse_locations(request_json(url, params))
         if len(locations) != len(batch):
-            raise RuntimeError(
-                f"{model_name}: API returned {len(locations)} locations for {len(batch)} requested"
-            )
-
+            raise RuntimeError(f"{model_name}: API returned {len(locations)} locations for {len(batch)}")
         for point, loc in zip(batch, locations):
-            periods, wind_u, wind_v, times = six_hour_totals(
-                loc,
-                max_periods=model_days * 4,
-            )
-            result[(point[0], point[1])] = {
-                "rain": periods,
-                "wind_u": wind_u,
-                "wind_v": wind_v,
-                "times": times,
-            }
+            rain, times = six_hour_totals(loc, model_days * 4)
+            wind = representative_wind(loc, model_days)
+            result[point] = {"rain": rain, "wind850": wind, "times": times}
+    return result
 
+
+def fetch_aifs_model(label, model_id, source_points):
+    print(f"\n=== AIFS SET: {label} ({model_id}) ===")
+    result = {}
+    model_days = AIFS_MODEL_HORIZONS[label]
+    for start in range(0, len(source_points), BATCH_SIZE):
+        batch = source_points[start:start + BATCH_SIZE]
+        lats = ",".join(str(p[0]) for p in batch)
+        lons = ",".join(str(p[1]) for p in batch)
+        params = {
+            "latitude": lats,
+            "longitude": lons,
+            "models": model_id,
+            "daily": "precipitation_sum",
+            "forecast_days": model_days,
+            "timezone": "UTC",
+            "precipitation_unit": "mm",
+        }
+        print(f"Batch {start // BATCH_SIZE + 1}: {len(batch)} points")
+        locations = parse_locations(request_json(AIFS_URL, params))
+        if len(locations) != len(batch):
+            raise RuntimeError(f"{label}: API returned {len(locations)} locations for {len(batch)}")
+        for point, loc in zip(batch, locations):
+            daily = loc.get("daily", {})
+            values = daily.get("precipitation_sum") or []
+            result[point] = [
+                None if v is None else round(float(v), 2)
+                for v in values[:model_days]
+            ]
     return result
 
 
@@ -198,10 +208,9 @@ def bilinear(v00, v10, v01, v11, fx, fy):
     )
 
 
-def interpolate_value(src, lats, lons, lat, lon, period):
+def interpolate_array(src, lats, lons, lat, lon, index):
     lat = min(max(lat, lats[0]), lats[-1])
     lon = min(max(lon, lons[0]), lons[-1])
-
     lat_pos = (lat - lats[0]) / SOURCE_STEP
     lon_pos = (lon - lons[0]) / SOURCE_STEP
     j0 = min(int(math.floor(lat_pos)), len(lats) - 2)
@@ -211,45 +220,44 @@ def interpolate_value(src, lats, lons, lat, lon, period):
 
     def value(j, i):
         arr = src.get((lats[j], lons[i]))
-        if not arr or period >= len(arr):
+        if not arr or index >= len(arr):
             return None
-        value = arr[period]
-        return None if value is None else float(value)
+        return arr[index]
 
-    vals = [
-        value(j0, i0),
-        value(j0, i0 + 1),
-        value(j0 + 1, i0),
-        value(j0 + 1, i0 + 1),
-    ]
-
+    vals = [value(j0, i0), value(j0, i0 + 1), value(j0 + 1, i0), value(j0 + 1, i0 + 1)]
     available = [v for v in vals if v is not None]
     if not available:
         return None
     if len(available) < 4:
-        return round(sum(available) / len(available), 3)
+        return round(sum(available) / len(available), 2)
+    return round(bilinear(vals[0], vals[1], vals[2], vals[3], fx, fy), 2)
 
-    return round(bilinear(vals[0], vals[1], vals[2], vals[3], fx, fy), 3)
 
-
-def nearest_value(src, lats, lons, lat, lon, period):
-    """Nearest-neighbour sampling for the deliberately sharper rainfall map."""
+def interpolate_uv(src, lats, lons, lat, lon, index):
     lat = min(max(lat, lats[0]), lats[-1])
     lon = min(max(lon, lons[0]), lons[-1])
-    lat_idx = min(range(len(lats)), key=lambda i: abs(lats[i] - lat))
-    lon_idx = min(range(len(lons)), key=lambda i: abs(lons[i] - lon))
-    arr = src.get((lats[lat_idx], lons[lon_idx]))
-    if not arr or period >= len(arr) or arr[period] is None:
-        return None
-    return round(float(arr[period]), 3)
+    lat_pos = (lat - lats[0]) / SOURCE_STEP
+    lon_pos = (lon - lons[0]) / SOURCE_STEP
+    j0 = min(int(math.floor(lat_pos)), len(lats) - 2)
+    i0 = min(int(math.floor(lon_pos)), len(lons) - 2)
+    fy = lat_pos - j0
+    fx = lon_pos - i0
 
+    def value(j, i):
+        arr = src.get((lats[j], lons[i]))
+        if not arr or index >= len(arr) or arr[index] is None:
+            return None
+        return arr[index]
 
-def interpolate_vector(src_u, src_v, lats, lons, lat, lon, day):
-    u = interpolate_value(src_u, lats, lons, lat, lon, day)
-    v = interpolate_value(src_v, lats, lons, lat, lon, day)
-    if u is None or v is None:
-        return None, None
-    return round(u, 3), round(v, 3)
+    vals = [value(j0, i0), value(j0, i0 + 1), value(j0 + 1, i0), value(j0 + 1, i0 + 1)]
+    if any(v is None for v in vals):
+        available = [v for v in vals if v is not None]
+        if not available:
+            return None
+        return [round(sum(v[0] for v in available) / len(available), 4), round(sum(v[1] for v in available) / len(available), 4)]
+    u = bilinear(vals[0][0], vals[1][0], vals[2][0], vals[3][0], fx, fy)
+    v = bilinear(vals[0][1], vals[1][1], vals[2][1], vals[3][1], fx, fy)
+    return [round(u, 4), round(v, 4)]
 
 
 def main():
@@ -261,103 +269,66 @@ def main():
 
     print(f"Source grid: {len(source_points)} points")
     print(f"Display grid: {len(display_lats) * len(display_lons)} points")
-    print(f"Forecast horizon: {FORECAST_DAYS} days")
-    print("Rainfall display interpolation: nearest-neighbour")
-    print("850 hPa wind: representative 12 UTC each day")
 
-    model_source = {}
+    standard = {}
     model_times = {}
-
-    for model_name, url in MODELS.items():
-        fetched = fetch_model(model_name, url, source_points)
-        model_source[model_name] = {
-            "rain": {k: v["rain"] for k, v in fetched.items()},
-            "wind_u": {k: v["wind_u"] for k, v in fetched.items()},
-            "wind_v": {k: v["wind_v"] for k, v in fetched.items()},
-        }
+    for name, url in MODELS.items():
+        fetched = fetch_standard_model(name, url, source_points)
+        standard[name] = {k: v["rain"] for k, v in fetched.items()}
+        standard[name + "::wind"] = {k: v["wind850"] for k, v in fetched.items()}
         first = next(iter(fetched.values()), None)
-        model_times[model_name] = first["times"] if first else []
+        model_times[name] = first["times"] if first else []
 
-    primary_times = model_times.get("ECMWF HRES") or next(
-        (v for v in model_times.values() if v), []
-    )
+    aifs_source = {}
+    for label, model_id in AIFS_MODELS.items():
+        aifs_source[label] = fetch_aifs_model(label, model_id, source_points)
 
-    valid_days = []
+    primary_times = model_times.get("ECMWF HRES") or next((v for v in model_times.values() if v), [])
+    run_time = None
     if primary_times:
         try:
             run_time = datetime.fromisoformat(primary_times[0].replace("Z", "+00:00"))
-            for day in range(FORECAST_DAYS):
-                start = run_time.timestamp() + day * 86400
-                end = start + 86400
-                valid_days.append({
-                    "day": day + 1,
-                    "start": datetime.fromtimestamp(start, timezone.utc).isoformat(),
-                    "end": datetime.fromtimestamp(end, timezone.utc).isoformat(),
-                })
         except Exception:
-            valid_days = []
+            pass
+
+    valid_days = []
+    if run_time:
+        for day in range(FORECAST_DAYS):
+            start = run_time.timestamp() + day * 86400
+            end = start + 86400
+            valid_days.append({
+                "day": day + 1,
+                "start": datetime.fromtimestamp(start, timezone.utc).isoformat(),
+                "end": datetime.fromtimestamp(end, timezone.utc).isoformat(),
+            })
 
     grid = []
-    total = len(display_lats) * len(display_lons)
-    processed = 0
-
     for lat in display_lats:
         for lon in display_lons:
             models = {}
-            for model_name in MODELS:
-                rain_values = []
-                wind_values = []
-
+            for name in MODELS:
+                rain_days = []
+                wind_days = []
                 for day in range(FORECAST_DAYS):
-                    six_hour_indices = range(day * 4, day * 4 + 4)
-                    day_values = [
-                        nearest_value(
-                            model_source[model_name]["rain"],
-                            source_lats,
-                            source_lons,
-                            lat,
-                            lon,
-                            p,
-                        )
-                        for p in six_hour_indices
-                    ]
-                    if all(v is None for v in day_values):
-                        rain_values.append(None)
-                    else:
-                        rain_values.append(round(sum(v or 0.0 for v in day_values), 2))
+                    six_indices = range(day * 4, day * 4 + 4)
+                    vals = [interpolate_array(standard[name], source_lats, source_lons, lat, lon, p) for p in six_indices]
+                    rain_days.append(None if all(v is None for v in vals) else round(sum(v or 0 for v in vals), 2))
+                    wind_days.append(interpolate_uv(standard[name + "::wind"], source_lats, source_lons, lat, lon, day))
+                models[name] = {"rain": rain_days, "wind850": wind_days}
 
-                    u, v = interpolate_vector(
-                        model_source[model_name]["wind_u"],
-                        model_source[model_name]["wind_v"],
-                        source_lats,
-                        source_lons,
-                        lat,
-                        lon,
-                        day,
-                    )
-                    wind_values.append(
-                        [u, v] if u is not None and v is not None else None
-                    )
+            aifs = {}
+            for label in AIFS_MODELS:
+                aifs[label] = [
+                    interpolate_array(aifs_source[label], source_lats, source_lons, lat, lon, day)
+                    for day in range(FORECAST_DAYS)
+                ]
 
-                models[model_name] = {
-                    "rain": rain_values,
-                    "wind850": wind_values,
-                }
-
-            grid.append({"lat": lat, "lon": lon, "models": models})
-            processed += 1
-            if processed % 500 == 0 or processed == total:
-                print(f"Building display grid: {processed}/{total}")
+            grid.append({"lat": lat, "lon": lon, "models": models, "aifs": aifs})
 
     out = {
         "updated": datetime.now(timezone.utc).isoformat(),
-        "source": "Open-Meteo model-specific APIs; 1° source grid interpolated to 0.5° display grid",
-        "domain": {
-            "lat_min": LAT_MIN,
-            "lat_max": LAT_MAX,
-            "lon_min": LON_MIN,
-            "lon_max": LON_MAX,
-        },
+        "source": "Open-Meteo model-specific APIs + Open-Meteo Ensemble Mean API; 1° source grid interpolated to 0.5° display grid",
+        "domain": {"lat_min": LAT_MIN, "lat_max": LAT_MAX, "lon_min": LON_MIN, "lon_max": LON_MAX},
         "step": DISPLAY_STEP,
         "source_step": SOURCE_STEP,
         "forecast_days": FORECAST_DAYS,
@@ -365,20 +336,16 @@ def main():
         "valid_days": valid_days,
         "models": list(MODELS.keys()),
         "model_horizons": MODEL_HORIZONS,
-        "wind850": {
-            "enabled": True,
-            "level_hpa": 850,
-            "representative_utc": "12:00",
-            "units": "m/s",
-        },
+        "aifs_models": list(AIFS_MODELS.keys()),
+        "aifs_model_ids": AIFS_MODELS,
+        "aifs_model_horizons": AIFS_MODEL_HORIZONS,
+        "aifs_set_note": "Independent precipitation products; not blended with the standard model set.",
+        "wind850": {"enabled": True, "level_hpa": 850, "representative_utc": "12:00", "units": "m/s"},
         "grid": grid,
     }
 
     tmp = OUT.with_suffix(".json.tmp")
-    tmp.write_text(
-        json.dumps(out, separators=(",", ":"), ensure_ascii=False),
-        encoding="utf-8",
-    )
+    tmp.write_text(json.dumps(out, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     tmp.replace(OUT)
     print(f"Wrote {OUT} ({OUT.stat().st_size / 1024 / 1024:.2f} MB)")
 
