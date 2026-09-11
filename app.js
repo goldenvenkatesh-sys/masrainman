@@ -1,25 +1,9 @@
-// ============================================================
-// MASRAINMAN
-// FAST + SHARP + MODERATELY SMOOTH 6-HOURLY RAINFALL MAP
-// VERSION 6
-//
-// FEATURES
-// ------------------------------------------------------------
-// • < 1 mm / 6h = transparent
-// • 0.5° source grid with bilinear interpolation
-// • Reduced smoothing
-// • No blur
-// • Fast canvas rendering
-// • ECMWF / GEM / GFS / ICON model selection
-// • 6-hour period selection
-// • IST valid-time display
-// • UTC model-run display
-// ============================================================
+/* MasRainman — 24-hour Day 1..Day 12 rainfall map */
 
-
-// ============================================================
-// RAINFALL LEVELS
-// ============================================================
+const INDIA_BOUNDS = L.latLngBounds(
+  [6.0, 68.0],
+  [37.5, 97.5]
+);
 
 const levels = [
   0.1, 1, 2, 3, 5, 7, 10, 15, 20, 25, 30, 40,
@@ -27,1962 +11,373 @@ const levels = [
   250, 300, 400, 500, 600, 800
 ];
 
-
-// ============================================================
-// MASRAINMAN COLOUR SCALE
-// ============================================================
-
 const colors = [
-  "#f2f2f2",
-  "#c7dcff",
-  "#8ebfff",
-  "#4aa3ff",
-  "#007cff",
-  "#004b99",
-  "#1b5e20",
-  "#00c853",
-  "#64dd17",
-  "#c6ff00",
-  "#ffd600",
-  "#ffab00",
-  "#ff6d00",
-  "#ff8f00",
-  "#ff5c8a",
-  "#ff1f5b",
-  "#ff0033",
-  "#d50000",
-  "#7b1fa2",
-  "#6a00ff",
-  "#c000ff",
-  "#d580ff",
-  "#f0ccff",
-  "#d9d9d9",
-  "#a6a6a6",
-  "#7a7a7a",
-  "#4d4d4d",
-  "#333333"
+  "#f2f2f2", "#c7dcff", "#8ebfff", "#4aa3ff",
+  "#007cff", "#004b99", "#1b5e20", "#00c853",
+  "#64dd17", "#c6ff00", "#ffd600", "#ffab00",
+  "#ff6d00", "#ff8f00", "#ff5c8a", "#ff1f5b",
+  "#ff0033", "#d50000", "#7b1fa2", "#6a00ff",
+  "#c000ff", "#d580ff", "#f0ccff", "#d9d9d9",
+  "#a6a6a6", "#7a7a7a", "#4d4d4d", "#333333"
 ];
 
+const state = {
+  data: null,
+  map: null,
+  canvas: null,
+  ctx: null,
+  imageData: null,
+  renderFrame: 0,
+  opacity: 0.8,
+  selectedDay: 0,
+  selectedModels: new Set(["ECMWF HRES", "GEM", "GFS", "ICON"]),
+};
 
-// ============================================================
-// MAP
-// ============================================================
+function $(id) { return document.getElementById(id); }
 
-const map = L.map(
-  "map",
-  {
-    preferCanvas: true,
-    zoomControl: true
+function ensureUi() {
+  const aside = document.querySelector("aside");
+  if (!aside) return;
+
+  const oldPeriod = $("period");
+  if (oldPeriod) {
+    oldPeriod.innerHTML = "";
+    for (let i = 0; i < 12; i++) {
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = `Day ${i + 1}`;
+      oldPeriod.appendChild(opt);
+    }
+    oldPeriod.previousSibling && oldPeriod.previousSibling.nodeType === 3;
+    const label = oldPeriod.parentElement;
+    if (label) {
+      label.childNodes.forEach(n => {
+        if (n.nodeType === Node.TEXT_NODE && n.textContent.includes("6-hour")) {
+          n.textContent = "Forecast day";
+        }
+      });
+    }
   }
-);
 
+  const heading = document.querySelector("header h1");
+  if (heading) heading.textContent = "24-Hour Rainfall Forecast";
 
-// ============================================================
-// MAP EXTENT
-// ============================================================
-
-map.fitBounds(
-  [
-    [5, 65],
-    [38, 100]
-  ],
-  {
-    padding: [10, 10]
+  const note = aside.querySelector(".note");
+  if (note) {
+    note.innerHTML = "Rainfall is accumulated for each forecast day. ECMWF/GFS extend to Day 12; GEM to Day 10; ICON to Day 7.";
   }
-);
-
-
-// ============================================================
-// BASEMAP
-// ============================================================
-
-L.tileLayer(
-  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  {
-    maxZoom: 12,
-    attribution:
-      "© OpenStreetMap contributors"
-  }
-).addTo(map);
-
-
-// ============================================================
-// GLOBAL DATA
-// ============================================================
-
-let data = null;
-
-let rainLayer = null;
-
-let lats = [];
-
-let lons = [];
-
-let gridLookup = new Map();
-
-
-// ============================================================
-// HEX → RGB
-// ============================================================
-
-function hexToRgb(
-  hex
-) {
-
-  hex =
-    hex.replace(
-      "#",
-      ""
-    );
-
-
-  return {
-
-    r: parseInt(
-      hex.substring(
-        0,
-        2
-      ),
-      16
-    ),
-
-    g: parseInt(
-      hex.substring(
-        2,
-        4
-      ),
-      16
-    ),
-
-    b: parseInt(
-      hex.substring(
-        4,
-        6
-      ),
-      16
-    )
-  };
 }
-
-
-const rgbColors =
-  colors.map(
-    hexToRgb
-  );
-
-
-// ============================================================
-// SELECTED MODELS
-// ============================================================
 
 function getSelectedModels() {
-
-  return [
-    ...document.querySelectorAll(
-      ".model:checked"
-    )
-  ].map(
-    element =>
-      element.value
-  );
+  const boxes = document.querySelectorAll("input.model");
+  const selected = [];
+  boxes.forEach(box => {
+    if (box.checked) selected.push(box.value);
+  });
+  state.selectedModels = new Set(selected);
+  return selected;
 }
 
-
-// ============================================================
-// GRID POINT LOOKUP
-// ============================================================
-
-function getPoint(
-  latIndex,
-  lonIndex
-) {
-
-  if (
-    latIndex < 0 ||
-    lonIndex < 0 ||
-    latIndex >= lats.length ||
-    lonIndex >= lons.length
-  ) {
-
-    return null;
-  }
-
-
-  const key =
-    lats[
-      latIndex
-    ].toFixed(4) +
-    "," +
-    lons[
-      lonIndex
-    ].toFixed(4);
-
-
-  return (
-    gridLookup.get(
-      key
-    ) ||
-    null
-  );
-}
-
-
-// ============================================================
-// BINARY SEARCH
-// ============================================================
-
-function lowerIndex(
-  array,
-  value
-) {
-
-  if (
-    value <= array[0]
-  ) {
-
-    return 0;
-  }
-
-
-  if (
-    value >=
-    array[
-      array.length - 1
-    ]
-  ) {
-
-    return (
-      array.length - 2
-    );
-  }
-
-
-  let low = 0;
-
-  let high =
-    array.length - 1;
-
-
-  while (
-    low <= high
-  ) {
-
-    const mid =
-      (
-        low +
-        high
-      ) >> 1;
-
-
-    if (
-      array[mid] <= value
-    ) {
-
-      low =
-        mid + 1;
-
-    } else {
-
-      high =
-        mid - 1;
-    }
-  }
-
-
-  return Math.max(
-    0,
-    Math.min(
-      array.length - 2,
-      high
-    )
-  );
-}
-
-
-// ============================================================
-// BUILD SELECTED MODEL FIELD
-// ============================================================
-
-function buildField(
-  period,
-  models
-) {
-
-  const field = [];
-
-
-  for (
-    let y = 0;
-    y < lats.length;
-    y++
-  ) {
-
-    const row = [];
-
-
-    for (
-      let x = 0;
-      x < lons.length;
-      x++
-    ) {
-
-      const point =
-        getPoint(
-          y,
-          x
-        );
-
-
-      if (
-        !point
-      ) {
-
-        row.push(
-          null
-        );
-
-        continue;
-      }
-
-
-      const values = [];
-
-
-      models.forEach(
-        model => {
-
-          const arr =
-            point.models &&
-            point.models[
-              model
-            ];
-
-
-          if (
-            arr &&
-            Number.isFinite(
-              Number(
-                arr[period]
-              )
-            )
-          ) {
-
-            values.push(
-              Number(
-                arr[period]
-              )
-            );
-          }
-        }
-      );
-
-
-      if (
-        !values.length
-      ) {
-
-        row.push(
-          null
-        );
-
-      } else {
-
-        row.push(
-          values.reduce(
-            (
-              a,
-              b
-            ) =>
-              a + b,
-            0
-          ) /
-          values.length
-        );
-      }
-    }
-
-
-    field.push(
-      row
-    );
-  }
-
-
-  return field;
-}
-
-
-// ============================================================
-// BILINEAR INTERPOLATION
-// ============================================================
-//
-// No smooth-step.
-// No Gaussian blur.
-// Keeps rainfall cores sharper.
-// ============================================================
-
-function interpolate(
-  field,
-  lat,
-  lon
-) {
-
-  if (
-    lat < lats[0] ||
-    lat > lats[
-      lats.length - 1
-    ] ||
-    lon < lons[0] ||
-    lon > lons[
-      lons.length - 1
-    ]
-  ) {
-
-    return null;
-  }
-
-
-  const yi =
-    lowerIndex(
-      lats,
-      lat
-    );
-
-
-  const xi =
-    lowerIndex(
-      lons,
-      lon
-    );
-
-
-  const y0 =
-    lats[yi];
-
-  const y1 =
-    lats[yi + 1];
-
-
-  const x0 =
-    lons[xi];
-
-  const x1 =
-    lons[xi + 1];
-
-
-  const fx =
-    Math.max(
-      0,
-      Math.min(
-        1,
-        (
-          lon - x0
-        ) /
-        (
-          x1 - x0
-        )
-      )
-    );
-
-
-  const fy =
-    Math.max(
-      0,
-      Math.min(
-        1,
-        (
-          lat - y0
-        ) /
-        (
-          y1 - y0
-        )
-      )
-    );
-
-
-  const q11 =
-    field[yi][xi];
-
-
-  const q21 =
-    field[yi][
-      xi + 1
-    ];
-
-
-  const q12 =
-    field[
-      yi + 1
-    ][xi];
-
-
-  const q22 =
-    field[
-      yi + 1
-    ][
-      xi + 1
-    ];
-
-
-  // ----------------------------------------------------------
-  // Missing-data fallback
-  // ----------------------------------------------------------
-
-  if (
-    q11 === null ||
-    q21 === null ||
-    q12 === null ||
-    q22 === null
-  ) {
-
-    const values = [
-      q11,
-      q21,
-      q12,
-      q22
-    ].filter(
-      value =>
-        value !== null
-    );
-
-
-    if (
-      !values.length
-    ) {
-
-      return null;
-    }
-
-
-    return (
-      values.reduce(
-        (
-          a,
-          b
-        ) =>
-          a + b,
-        0
-      ) /
-      values.length
-    );
-  }
-
-
-  // ----------------------------------------------------------
-  // LINEAR BILINEAR INTERPOLATION
-  // ----------------------------------------------------------
-
-  const top =
-    q11 *
-      (1 - fx) +
-    q21 *
-      fx;
-
-
-  const bottom =
-    q12 *
-      (1 - fx) +
-    q22 *
-      fx;
-
-
-  return (
-    top *
-      (1 - fy) +
-    bottom *
-      fy
-  );
-}
-
-
-// ============================================================
-// RAINFALL COLOUR
-// ============================================================
-//
-// IMPORTANT:
-//
-// < 1 mm / 6h = TRANSPARENT
-// ============================================================
-
-function rainfallColor(
-  value
-) {
-
-  if (
-    !Number.isFinite(
-      value
-    ) ||
-    value < 1
-  ) {
-
-    return null;
-  }
-
-
-  if (
-    value >=
-    levels[
-      levels.length - 1
-    ]
-  ) {
-
-    return rgbColors[
-      rgbColors.length - 1
-    ];
-  }
-
-
-  let i = 0;
-
-
-  while (
-    i <
-      levels.length - 1 &&
-    value >=
-      levels[i + 1]
-  ) {
-
-    i++;
-  }
-
-
-  const low =
-    levels[i];
-
-
-  const high =
-    levels[
-      i + 1
-    ];
-
-
-  let t =
-    (
-      value - low
-    ) /
-    (
-      high - low
-    );
-
-
-  t =
-    Math.max(
-      0,
-      Math.min(
-        1,
-        t
-      )
-    );
-
-
-  // Linear colour interpolation.
-  // No extra smoothing.
-
-  const c1 =
-    rgbColors[i];
-
-
-  const c2 =
-    rgbColors[
-      i + 1
-    ];
-
-
-  return {
-
-    r: Math.round(
-      c1.r +
-      (
-        c2.r -
-        c1.r
-      ) *
-      t
-    ),
-
-    g: Math.round(
-      c1.g +
-      (
-        c2.g -
-        c1.g
-      ) *
-      t
-    ),
-
-    b: Math.round(
-      c1.b +
-      (
-        c2.b -
-        c1.b
-      ) *
-      t
-    )
-  };
-}
-
-
-// ============================================================
-// RAINFALL CANVAS LAYER
-// ============================================================
-
-const RainLayer =
-  L.Layer.extend({
-
-    onAdd:
-      function(
-        map
-      ) {
-
-        this._map =
-          map;
-
-
-        this._canvas =
-          document.createElement(
-            "canvas"
-          );
-
-
-        this._canvas.className =
-          "masrainman-rainfall";
-
-
-        this._canvas.style.position =
-          "absolute";
-
-
-        this._canvas.style.left =
-          "0px";
-
-
-        this._canvas.style.top =
-          "0px";
-
-
-        this._canvas.style.pointerEvents =
-          "none";
-
-
-        this._canvas.style.zIndex =
-          "350";
-
-
-        map.getPanes()
-          .overlayPane
-          .appendChild(
-            this._canvas
-          );
-
-
-        this._redraw =
-          () =>
-            this.redraw();
-
-
-        map.on(
-          "moveend zoomend resize",
-          this._redraw
-        );
-
-
-        this.redraw();
-      },
-
-
-    onRemove:
-      function(
-        map
-      ) {
-
-        map.off(
-          "moveend zoomend resize",
-          this._redraw
-        );
-
-
-        if (
-          this._canvas
-        ) {
-
-          this._canvas.remove();
-        }
-      },
-
-
-    redraw:
-      function() {
-
-        if (
-          !data ||
-          !lats.length ||
-          !lons.length
-        ) {
-
-          return;
-        }
-
-
-        const size =
-          this._map.getSize();
-
-
-        const width =
-          Math.max(
-            1,
-            Math.floor(
-              size.x
-            )
-          );
-
-
-        const height =
-          Math.max(
-            1,
-            Math.floor(
-              size.y
-            )
-          );
-
-
-        const canvas =
-          this._canvas;
-
-
-        canvas.width =
-          width;
-
-
-        canvas.height =
-          height;
-
-
-        canvas.style.width =
-          width + "px";
-
-
-        canvas.style.height =
-          height + "px";
-
-
-        const ctx =
-          canvas.getContext(
-            "2d"
-          );
-
-
-        ctx.clearRect(
-          0,
-          0,
-          width,
-          height
-        );
-
-
-        // ------------------------------------------------------
-        // CURRENT PERIOD
-        // ------------------------------------------------------
-
-        const period =
-          Number(
-            document.querySelector(
-              "#period"
-            ).value
-          );
-
-
-        // ------------------------------------------------------
-        // OPACITY
-        // ------------------------------------------------------
-
-        const opacity =
-          Number(
-            document.querySelector(
-              "#opacity"
-            ).value
-          );
-
-
-        // ------------------------------------------------------
-        // SELECTED MODELS
-        // ------------------------------------------------------
-
-        const models =
-          getSelectedModels();
-
-
-        if (
-          !models.length
-        ) {
-
-          return;
-        }
-
-
-        // ------------------------------------------------------
-        // MODEL MEAN FIELD
-        // ------------------------------------------------------
-
-        const field =
-          buildField(
-            period,
-            models
-          );
-
-
-        // ------------------------------------------------------
-        // FAST DISPLAY GRID
-        // ------------------------------------------------------
-
-        const FW = 330;
-
-        const FH = 198;
-
-
-        const small =
-          document.createElement(
-            "canvas"
-          );
-
-
-        small.width =
-          FW;
-
-
-        small.height =
-          FH;
-
-
-        const smallCtx =
-          small.getContext(
-            "2d"
-          );
-
-
-        const image =
-          smallCtx.createImageData(
-            FW,
-            FH
-          );
-
-
-        const pixels =
-          image.data;
-
-
-        // ------------------------------------------------------
-        // CURRENT MAP BOUNDS
-        // ------------------------------------------------------
-
-        const bounds =
-          this._map.getBounds();
-
-
-        const west =
-          bounds.getWest();
-
-
-        const east =
-          bounds.getEast();
-
-
-        // ------------------------------------------------------
-        // RENDER
-        // ------------------------------------------------------
-
-        for (
-          let y = 0;
-          y < FH;
-          y++
-        ) {
-
-          const screenY =
-            (
-              y /
-              (
-                FH - 1
-              )
-            ) *
-            height;
-
-
-          const rowLat =
-            this._map
-              .containerPointToLatLng(
-                L.point(
-                  0,
-                  screenY
-                )
-              )
-              .lat;
-
-
-          for (
-            let x = 0;
-            x < FW;
-            x++
-          ) {
-
-            const fraction =
-              x /
-              (
-                FW - 1
-              );
-
-
-            const lon =
-              west +
-              (
-                east -
-                west
-              ) *
-              fraction;
-
-
-            const value =
-              interpolate(
-                field,
-                rowLat,
-                lon
-              );
-
-
-            // --------------------------------------------------
-            // BELOW 1 MM = NO COLOUR
-            // --------------------------------------------------
-
-            if (
-              value === null ||
-              value < 1
-            ) {
-
-              continue;
-            }
-
-
-            const c =
-              rainfallColor(
-                value
-              );
-
-
-            if (!c) {
-              continue;
-            }
-
-
-            const index =
-              (
-                y * FW +
-                x
-              ) * 4;
-
-
-            pixels[index] =
-              c.r;
-
-
-            pixels[
-              index + 1
-            ] =
-              c.g;
-
-
-            pixels[
-              index + 2
-            ] =
-              c.b;
-
-
-            pixels[
-              index + 3
-            ] =
-              Math.round(
-                255 *
-                opacity
-              );
-          }
-        }
-
-
-        smallCtx.putImageData(
-          image,
-          0,
-          0
-        );
-
-
-        // ------------------------------------------------------
-        // UPSCALE
-        // ------------------------------------------------------
-        //
-        // No blur.
-        // No filter.
-        // Medium interpolation gives a balance between
-        // smoothness and rainfall-core definition.
-        // ------------------------------------------------------
-
-        ctx.save();
-
-
-        ctx.imageSmoothingEnabled =
-          true;
-
-
-        ctx.imageSmoothingQuality =
-          "medium";
-
-
-        ctx.filter =
-          "none";
-
-
-        ctx.drawImage(
-          small,
-          0,
-          0,
-          width,
-          height
-        );
-
-
-        ctx.restore();
-      }
+function setupControls() {
+  document.querySelectorAll("input.model").forEach(box => {
+    box.addEventListener("change", () => {
+      getSelectedModels();
+      drawRainfall();
+    });
   });
 
-
-// ============================================================
-// DRAW RAINFALL
-// ============================================================
-
-function drawRainfall() {
-
-  if (
-    !data ||
-    !gridLookup.size
-  ) {
-
-    return;
+  const day = $("period");
+  if (day) {
+    day.addEventListener("change", () => {
+      state.selectedDay = Number(day.value) || 0;
+      updateHeader();
+      drawRainfall();
+    });
   }
 
-
-  if (
-    rainLayer
-  ) {
-
-    map.removeLayer(
-      rainLayer
-    );
+  const opacity = $("opacity");
+  if (opacity) {
+    state.opacity = Number(opacity.value) || 0.8;
+    opacity.addEventListener("input", () => {
+      state.opacity = Number(opacity.value) || 0.8;
+      if (state.canvas) state.canvas.style.opacity = String(state.opacity);
+    });
   }
-
-
-  rainLayer =
-    new RainLayer();
-
-
-  rainLayer.addTo(
-    map
-  );
 }
 
+function getRunTimestamp() {
+  if (!state.data || !state.data.updated) return null;
+  const updated = new Date(state.data.updated);
+  if (Number.isNaN(updated.getTime())) return null;
 
-// ============================================================
-// LEGEND
-// ============================================================
-
-function buildLegend() {
-
-  const el =
-    document.querySelector(
-      "#legend"
-    );
-
-
-  if (!el) {
-    return;
-  }
-
-
-  let html =
-    "<b>Rainfall (mm / 6h)</b><br>";
-
-
-  levels.forEach(
-    (
-      value,
-      i
-    ) => {
-
-      const next =
-        levels[
-          i + 1
-        ];
-
-
-      const label =
-        next !== undefined
-          ? `${value}–${next}`
-          : `≥${value}`;
-
-
-      html +=
-        `<span class="lg" ` +
-        `style="background:${colors[i]}"></span>` +
-        `${label}<br>`;
-    }
-  );
-
-
-  el.innerHTML =
-    html;
+  // The updater completes after a model run. Snap down to the latest
+  // completed 6-hour cycle so the header identifies the model run.
+  const run = new Date(updated.getTime());
+  run.setUTCMinutes(0, 0, 0);
+  run.setUTCHours(Math.floor(run.getUTCHours() / 6) * 6);
+  return run;
 }
 
-
-// ============================================================
-// MODEL RUN HOUR
-// ============================================================
-//
-// Model run cycles:
-// 00Z
-// 06Z
-// 12Z
-// 18Z
-//
-// Current data.json contains the update timestamp.
-// We derive the nearest completed 6-hour cycle.
-// ============================================================
-
-function getRunHour(
-  timestamp
-) {
-
-  if (
-    !timestamp
-  ) {
-
-    return null;
+function getValidDayRange(dayIndex) {
+  if (state.data && state.data.valid_days && state.data.valid_days[dayIndex]) {
+    return state.data.valid_days[dayIndex];
   }
-
-
-  const date =
-    new Date(
-      timestamp
-    );
-
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-
-    return null;
-  }
-
-
-  const utcHour =
-    date.getUTCHours();
-
-
-  const runHour =
-    Math.floor(
-      utcHour / 6
-    ) * 6;
-
-
-  return (
-    String(
-      runHour
-    ).padStart(
-      2,
-      "0"
-    ) +
-    "Z"
-  );
+  const run = getRunTimestamp();
+  if (!run) return null;
+  const start = new Date(run.getTime() + dayIndex * 86400000);
+  const end = new Date(start.getTime() + 86400000);
+  return { start: start.toISOString(), end: end.toISOString() };
 }
 
-
-// ============================================================
-// RUN DATE
-// ============================================================
-
-function formatRunDate(
-  timestamp
-) {
-
-  if (
-    !timestamp
-  ) {
-
-    return null;
-  }
-
-
-  const date =
-    new Date(
-      timestamp
-    );
-
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-
-    return null;
-  }
-
-
-  const day =
-    String(
-      date.getUTCDate()
-    ).padStart(
-      2,
-      "0"
-    );
-
-
-  const month =
-    date.toLocaleString(
-      "en-US",
-      {
-        month: "short",
-        timeZone: "UTC"
-      }
-    );
-
-
-  const year =
-    date.getUTCFullYear();
-
-
-  return (
-    day +
-    " " +
-    month +
-    " " +
-    year
-  );
+function formatIST(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).replace(",", " / ");
 }
-
-
-// ============================================================
-// GET VALID TIME
-// ============================================================
-//
-// This function supports several possible data formats:
-//
-// 1. ISO timestamps in data.periods
-// 2. Date/time strings
-// 3. Hour offsets
-//
-// If periods contain timestamps, those are used directly.
-//
-// Otherwise the selected period is treated as a 6-hour
-// forecast offset from the model run.
-// ============================================================
-
-function getValidTimestamp(
-  period
-) {
-
-  // ----------------------------------------------------------
-  // OPTION 1 — PERIOD IS ALREADY AN ISO DATE
-  // ----------------------------------------------------------
-
-  if (
-    data &&
-    Array.isArray(
-      data.periods
-    ) &&
-    data.periods[
-      period
-    ]
-  ) {
-
-    const raw =
-      data.periods[
-        period
-      ];
-
-
-    if (
-      typeof raw === "string"
-    ) {
-
-      const parsed =
-        new Date(
-          raw
-        );
-
-
-      if (
-        !Number.isNaN(
-          parsed.getTime()
-        )
-      ) {
-
-        return parsed;
-      }
-    }
-  }
-
-
-  // ----------------------------------------------------------
-  // OPTION 2 — USE MODEL RUN + FORECAST INDEX
-  // ----------------------------------------------------------
-
-  if (
-    data &&
-    data.updated
-  ) {
-
-    const base =
-      new Date(
-        data.updated
-      );
-
-
-    if (
-      Number.isNaN(
-        base.getTime()
-      )
-    ) {
-
-      return null;
-    }
-
-
-    // Determine completed 6-hour run
-
-    const runHour =
-      Math.floor(
-        base.getUTCHours() /
-        6
-      ) * 6;
-
-
-    const run =
-      new Date(
-        base
-      );
-
-
-    run.setUTCHours(
-      runHour,
-      0,
-      0,
-      0
-    );
-
-
-    // Forecast period index × 6 hours
-
-    run.setUTCHours(
-      run.getUTCHours() +
-      (
-        Number(period) *
-        6
-      )
-    );
-
-
-    return run;
-  }
-
-
-  return null;
-}
-
-
-// ============================================================
-// FORMAT VALID TIME IN IST
-// ============================================================
-
-function formatValidIST(
-  period
-) {
-
-  const valid =
-    getValidTimestamp(
-      period
-    );
-
-
-  if (
-    !valid
-  ) {
-
-    return "--";
-  }
-
-
-  // Convert UTC → IST (+5:30)
-
-  const ist =
-    new Date(
-      valid.getTime() +
-      (
-        5.5 *
-        60 *
-        60 *
-        1000
-      )
-    );
-
-
-  const day =
-    String(
-      ist.getUTCDate()
-    ).padStart(
-      2,
-      "0"
-    );
-
-
-  const month =
-    ist.toLocaleString(
-      "en-US",
-      {
-        month: "short",
-        timeZone: "UTC"
-      }
-    );
-
-
-  const year =
-    ist.getUTCFullYear();
-
-
-  const hours =
-    String(
-      ist.getUTCHours()
-    ).padStart(
-      2,
-      "0"
-    );
-
-
-  const minutes =
-    String(
-      ist.getUTCMinutes()
-    ).padStart(
-      2,
-      "0"
-    );
-
-
-  return (
-    day +
-    " " +
-    month +
-    " " +
-    year +
-    " / " +
-    hours +
-    ":" +
-    minutes +
-    " IST"
-  );
-}
-
-
-// ============================================================
-// TOP-RIGHT RUN + VALID DISPLAY
-// ============================================================
 
 function updateHeader() {
+  const time = $("time");
+  if (!time || !state.data) return;
 
-  const time =
-    document.querySelector(
-      "#time"
-    );
+  const run = getRunTimestamp();
+  const range = getValidDayRange(state.selectedDay);
+  const runText = run
+    ? `${run.toLocaleDateString("en-GB", {day:"2-digit", month:"short", year:"numeric", timeZone:"UTC"})} / ${String(run.getUTCHours()).padStart(2,"0")}Z`
+    : "—";
 
-
-  if (
-    !time ||
-    !data ||
-    !data.updated
-  ) {
-
-    return;
+  let validText = "—";
+  if (range) {
+    validText = `${formatIST(range.start)} IST – ${formatIST(range.end)} IST`;
   }
 
+  time.innerHTML = `<b>Run:</b> ${runText} &nbsp; | &nbsp; <b>Valid:</b> Day ${state.selectedDay + 1} &nbsp; ${validText}`;
+}
 
-  const periodControl =
-    document.querySelector(
-      "#period"
-    );
+function setupMap() {
+  state.map = L.map("map", {
+    zoomControl: true,
+    preferCanvas: true,
+    minZoom: 4,
+    maxZoom: 10,
+    worldCopyJump: false,
+  });
 
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "© OpenStreetMap contributors",
+  }).addTo(state.map);
 
-  const period =
-    periodControl
-      ? Number(
-          periodControl.value
-        )
-      : 0;
+  state.map.fitBounds(INDIA_BOUNDS, { padding: [18, 18] });
 
+  state.map.on("zoomend moveend resize", scheduleRender);
 
-  const runDate =
-    formatRunDate(
-      data.updated
-    );
+  const map = document.getElementById("map");
+  if (map) {
+    const ro = new ResizeObserver(() => {
+      state.map.invalidateSize({ pan: false });
+      scheduleRender();
+    });
+    ro.observe(map);
+  }
+}
 
+function colorAt(value) {
+  if (!Number.isFinite(value) || value < 1) return null;
+  if (value >= levels[levels.length - 1]) return colors[colors.length - 1];
 
-  const runHour =
-    getRunHour(
-      data.updated
-    );
+  let i = 0;
+  while (i < levels.length - 1 && value > levels[i + 1]) i++;
+  const a = levels[i];
+  const b = levels[i + 1];
+  const t = Math.max(0, Math.min(1, (value - a) / (b - a)));
+  return mixHex(colors[i], colors[i + 1], t);
+}
 
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
 
-  const validIST =
-    formatValidIST(
-      period
-    );
+function mixHex(a, b, t) {
+  const ar = hexToRgb(a), br = hexToRgb(b);
+  return `rgb(${Math.round(ar[0] + (br[0]-ar[0])*t)},${Math.round(ar[1] + (br[1]-ar[1])*t)},${Math.round(ar[2] + (br[2]-ar[2])*t)})`;
+}
 
+function buildSourceGrid() {
+  const grid = state.data.grid || [];
+  const rows = new Map();
+  const cols = new Set();
+  grid.forEach(p => {
+    cols.add(p.lon);
+    if (!rows.has(p.lat)) rows.set(p.lat, []);
+    rows.get(p.lat).push(p);
+  });
+  const lats = [...rows.keys()].sort((a,b) => a-b);
+  const lons = [...cols].sort((a,b) => a-b);
+  const map = new Map();
+  grid.forEach(p => map.set(`${p.lat}|${p.lon}`, p));
+  return { lats, lons, map };
+}
 
-  if (
-    !runDate ||
-    !runHour
-  ) {
+function interpolate(grid, lat, lon, model, dayIndex) {
+  const { lats, lons, map } = grid;
+  if (!lats.length || !lons.length) return null;
 
-    time.textContent =
-      "Run : -- | Valid : " +
-      validIST;
+  lat = Math.max(lats[0], Math.min(lats[lats.length - 1], lat));
+  lon = Math.max(lons[0], Math.min(lons[lons.length - 1], lon));
 
+  let j = Math.floor((lat - lats[0]) / (lats[1] - lats[0]));
+  let i = Math.floor((lon - lons[0]) / (lons[1] - lons[0]));
+  j = Math.max(0, Math.min(lats.length - 2, j));
+  i = Math.max(0, Math.min(lons.length - 2, i));
 
-    return;
+  const lat0 = lats[j], lat1 = lats[j+1];
+  const lon0 = lons[i], lon1 = lons[i+1];
+  const fy = (lat - lat0) / (lat1 - lat0);
+  const fx = (lon - lon0) / (lon1 - lon0);
+
+  const pts = [
+    map.get(`${lat0}|${lon0}`), map.get(`${lat0}|${lon1}`),
+    map.get(`${lat1}|${lon0}`), map.get(`${lat1}|${lon1}`),
+  ];
+  const vals = pts.map(p => {
+    const v = p && p.models && p.models[model] ? p.models[model][dayIndex] : null;
+    return Number.isFinite(v) ? v : null;
+  });
+  const available = vals.filter(v => v !== null);
+  if (!available.length) return null;
+  if (available.length < 4) return available.reduce((a,b) => a+b,0) / available.length;
+
+  return vals[0]*(1-fx)*(1-fy) + vals[1]*fx*(1-fy) + vals[2]*(1-fx)*fy + vals[3]*fx*fy;
+}
+
+function blendedValue(grid, lat, lon, dayIndex, models) {
+  const vals = models.map(model => interpolate(grid, lat, lon, model, dayIndex)).filter(v => Number.isFinite(v));
+  if (!vals.length) return null;
+  return vals.reduce((a,b) => a+b,0) / vals.length;
+}
+
+function makeCanvas() {
+  const mapEl = $("map");
+  if (!mapEl) return;
+  if (!state.canvas) {
+    state.canvas = document.createElement("canvas");
+    state.canvas.className = "rainfall-overlay";
+    state.canvas.style.position = "absolute";
+    state.canvas.style.left = "0";
+    state.canvas.style.top = "0";
+    state.canvas.style.pointerEvents = "none";
+    state.canvas.style.zIndex = "450";
+    state.canvas.style.opacity = String(state.opacity);
+    mapEl.appendChild(state.canvas);
   }
 
-
-  time.textContent =
-    "Run : " +
-    runDate +
-    " / " +
-    runHour +
-    "  |  Valid : " +
-    validIST;
-
-
-  // ----------------------------------------------------------
-  // HEADER STYLE
-  // ----------------------------------------------------------
-
-  time.style.fontWeight =
-    "600";
-
-
-  time.style.fontSize =
-    "14px";
-
-
-  time.style.color =
-    "#444";
-
-
-  time.style.whiteSpace =
-    "nowrap";
+  const w = Math.max(1, mapEl.clientWidth);
+  const h = Math.max(1, mapEl.clientHeight);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  state.canvas.width = Math.round(w * dpr);
+  state.canvas.height = Math.round(h * dpr);
+  state.canvas.style.width = `${w}px`;
+  state.canvas.style.height = `${h}px`;
+  state.ctx = state.canvas.getContext("2d", { alpha: true });
+  state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
+function drawRainfall() {
+  if (!state.data || !state.map) return;
+  makeCanvas();
+  const ctx = state.ctx;
+  const canvas = state.canvas;
+  if (!ctx || !canvas) return;
 
-// ============================================================
-// PREPARE GRID
-// ============================================================
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  const models = [...state.selectedModels];
+  ctx.clearRect(0, 0, w, h);
+  if (!models.length) return;
 
-function prepareGrid() {
+  const source = buildSourceGrid();
+  // Draw at the actual viewport resolution. Each screen pixel gets a
+  // bilinearly interpolated value from the 0.5° display grid. This means
+  // zooming never scales a tiny fixed raster and therefore avoids the
+  // old pixelated appearance.
+  const step = 2;
+  const image = ctx.createImageData(Math.ceil(w / step), Math.ceil(h / step));
+  const iw = image.width;
+  const ih = image.height;
 
-  gridLookup =
-    new Map();
+  for (let py = 0; py < ih; py++) {
+    const y = py * step;
+    for (let px = 0; px < iw; px++) {
+      const x = px * step;
+      const geo = state.map.containerPointToLatLng([x, y]);
+      const lat = geo.lat;
+      const lng = geo.lng;
+      if (lat < state.data.domain.lat_min || lat > state.data.domain.lat_max || lng < state.data.domain.lon_min || lng > state.data.domain.lon_max) continue;
 
-
-  lats = [];
-
-  lons = [];
-
-
-  const grid =
-    data.grid || [];
-
-
-  if (
-    !grid.length
-  ) {
-
-    return;
+      const value = blendedValue(source, lat, lng, state.selectedDay, models);
+      const color = colorAt(value);
+      if (!color) continue;
+      const [r,g,b] = hexToRgb(color.match(/#/) ? color : rgbToHex(color));
+      const alpha = Math.round(235);
+      const idx = (py * iw + px) * 4;
+      image.data[idx] = r;
+      image.data[idx+1] = g;
+      image.data[idx+2] = b;
+      image.data[idx+3] = alpha;
+    }
   }
 
-
-  const latSet =
-    new Set();
-
-
-  const lonSet =
-    new Set();
-
-
-  grid.forEach(
-    point => {
-
-      const lat =
-        Number(
-          point.lat
-        );
-
-
-      const lon =
-        Number(
-          point.lon
-        );
-
-
-      if (
-        !Number.isFinite(
-          lat
-        ) ||
-        !Number.isFinite(
-          lon
-        )
-      ) {
-
-        return;
-      }
-
-
-      latSet.add(
-        lat
-      );
-
-
-      lonSet.add(
-        lon
-      );
-
-
-      const key =
-        lat.toFixed(4) +
-        "," +
-        lon.toFixed(4);
-
-
-      gridLookup.set(
-        key,
-        point
-      );
-    }
-  );
-
-
-  lats =
-    [
-      ...latSet
-    ].sort(
-      (
-        a,
-        b
-      ) =>
-        a - b
-    );
-
-
-  lons =
-    [
-      ...lonSet
-    ].sort(
-      (
-        a,
-        b
-      ) =>
-        a - b
-    );
+  const temp = document.createElement("canvas");
+  temp.width = iw;
+  temp.height = ih;
+  temp.getContext("2d").putImageData(image, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(temp, 0, 0, w, h);
 }
 
-
-// ============================================================
-// MODEL CHECKBOXES
-// ============================================================
-
-document
-  .querySelectorAll(
-    ".model"
-  )
-  .forEach(
-    checkbox => {
-
-      checkbox.addEventListener(
-        "change",
-        drawRainfall
-      );
-    }
-  );
-
-
-// ============================================================
-// PERIOD CONTROL
-// ============================================================
-
-const periodControl =
-  document.querySelector(
-    "#period"
-  );
-
-
-if (
-  periodControl
-) {
-
-  periodControl.addEventListener(
-    "change",
-    () => {
-
-      // Update Valid time immediately
-
-      updateHeader();
-
-
-      // Redraw rainfall
-
-      drawRainfall();
-    }
-  );
+function rgbToHex(rgb) {
+  const m = rgb.match(/\d+/g);
+  if (!m) return "#000000";
+  return "#" + m.slice(0,3).map(v => Number(v).toString(16).padStart(2,"0")).join("");
 }
 
-
-// ============================================================
-// OPACITY CONTROL
-// ============================================================
-
-const opacityControl =
-  document.querySelector(
-    "#opacity"
-  );
-
-
-if (
-  opacityControl
-) {
-
-  // Default transparency
-
-  opacityControl.value =
-    "0.62";
-
-
-  opacityControl.addEventListener(
-    "input",
-    drawRainfall
-  );
+function scheduleRender() {
+  cancelAnimationFrame(state.renderFrame);
+  state.renderFrame = requestAnimationFrame(drawRainfall);
 }
 
+function buildLegend() {
+  const legend = $("legend");
+  if (!legend) return;
+  legend.innerHTML = `<div class="legend-title">24-hour rainfall (mm)</div>` +
+    levels.map((v,i) => `<span class="legend-item"><i style="background:${colors[i]}"></i>${v}</span>`).join("");
+}
 
-// ============================================================
-// LOAD DATA
-// ============================================================
+async function loadData() {
+  const res = await fetch(`data.json?v=${Date.now()}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`data.json HTTP ${res.status}`);
+  state.data = await res.json();
+  ensureUi();
+  setupControls();
+  getSelectedModels();
+  updateHeader();
+  buildLegend();
+  drawRainfall();
+}
 
-fetch(
-  "data.json?" +
-  Date.now()
-)
-
-  .then(
-    response => {
-
-      if (
-        !response.ok
-      ) {
-
-        throw new Error(
-          "Unable to load data.json"
-        );
-      }
-
-
-      return response.json();
-    }
-  )
-
-
-  .then(
-    json => {
-
-      data =
-        json;
-
-
-      // Prepare rainfall grid
-
-      prepareGrid();
-
-
-      // Build legend
-
-      buildLegend();
-
-
-      // Display Run + Valid
-
-      updateHeader();
-
-
-      // Draw rainfall
-
-      drawRainfall();
-
-
-      // Second render after Leaflet layout
-
-      setTimeout(
-        () => {
-
-          map.invalidateSize();
-
-          updateHeader();
-
-          drawRainfall();
-
-        },
-        250
-      );
-    }
-  )
-
-
-  .catch(
-    error => {
-
-      console.error(
-        error
-      );
-
-
-      const time =
-        document.querySelector(
-          "#time"
-        );
-
-
-      if (
-        time
-      ) {
-
-        time.textContent =
-          "Rainfall data unavailable";
-      }
-    }
-  );
-
-
-// ============================================================
-// WINDOW RESIZE
-// ============================================================
-
-window.addEventListener(
-  "resize",
-  () => {
-
-    if (
-      rainLayer
-    ) {
-
-      rainLayer.redraw();
-    }
-  }
-);
+setupMap();
+loadData().catch(err => {
+  console.error(err);
+  const time = $("time");
+  if (time) time.textContent = `Unable to load rainfall data: ${err.message}`;
+});

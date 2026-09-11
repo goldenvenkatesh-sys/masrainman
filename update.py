@@ -1,23 +1,38 @@
 import json
+import math
 import time
-import urllib.parse
-import urllib.request
-import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
+import requests
 
 # ============================================================
-# MASRAINMAN RAINFALL UPDATER
+# MasRainman rainfall data updater
+# ============================================================
+# Creates 12 forecast days of 6-hour rainfall totals from
+# Open-Meteo model-specific APIs, using a 1° source grid and
+# bilinear interpolation to the 0.5° display grid.
 #
-# Pan-India
-# 1.0 degree API source grid
-# 0.5 degree interpolated display grid
-# 3 days
-# 6-hour rainfall
-# ECMWF / GEM / GFS / ICON
+# Models:
+#   ECMWF HRES, GEM, GFS, ICON
+#
+# The browser groups the 6-hour periods into Day 1 ... Day 12.
+# GEM has a 10-day forecast horizon at Open-Meteo; Day 11-12
+# therefore remain unavailable for GEM and are represented as
+# null values rather than invented data.
 # ============================================================
 
+BASE = Path(__file__).resolve().parent
+OUT = BASE / "data.json"
+
+LAT_MIN, LAT_MAX = 5.0, 38.0
+LON_MIN, LON_MAX = 65.0, 100.0
+SOURCE_STEP = 1.0
+DISPLAY_STEP = 0.5
+FORECAST_DAYS = 12
+BATCH_SIZE = 500
+REQUEST_TIMEOUT = 90
+RETRIES = 5
 
 MODELS = {
     "ECMWF HRES": "https://api.open-meteo.com/v1/ecmwf",
@@ -27,756 +42,247 @@ MODELS = {
 }
 
 
-# ============================================================
-# DOMAIN
-# ============================================================
-
-LAT_MIN = 5.0
-LAT_MAX = 38.0
-
-LON_MIN = 65.0
-LON_MAX = 100.0
+def frange(start, stop, step):
+    n = int(round((stop - start) / step))
+    return [round(start + i * step, 6) for i in range(n + 1)]
 
 
-# API source grid
-SOURCE_STEP = 1.0
-
-# Final display grid
-DISPLAY_STEP = 0.5
-
-
-# Keep requests comfortably sized
-BATCH_SIZE = 300
-
-
-FORECAST_DAYS = 3
-PERIODS = FORECAST_DAYS * 4
-
-
-MAX_RETRIES = 8
-
-REQUEST_DELAY = 8.0
-
-RATE_LIMIT_DELAY = 90.0
-
-MAX_RETRY_DELAY = 300.0
-
-
-OUTPUT = Path("data.json")
-
-
-# ============================================================
-# BUILD GRID
-# ============================================================
-
-def build_grid(step):
-
-    grid = []
-
-    lat = LAT_MIN
-
-    while lat <= LAT_MAX + 1e-9:
-
-        lon = LON_MIN
-
-        while lon <= LON_MAX + 1e-9:
-
-            grid.append({
-                "lat": round(lat, 2),
-                "lon": round(lon, 2),
-                "models": {}
-            })
-
-            lon += step
-
-        lat += step
-
-    return grid
-
-
-# ============================================================
-# HTTP FETCH
-# ============================================================
-
-def fetch_json(url):
-
+def request_json(url, params):
     last_error = None
-
-    for attempt in range(1, MAX_RETRIES + 1):
-
+    for attempt in range(1, RETRIES + 1):
         try:
-
-            request = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": "MasRainman/1.0"
-                }
-            )
-
-            with urllib.request.urlopen(
-                request,
-                timeout=120
-            ) as response:
-
-                raw = response.read()
-
-                return json.loads(
-                    raw.decode("utf-8")
-                )
-
-
-        except urllib.error.HTTPError as exc:
-
-            last_error = exc
-
-            if exc.code == 429:
-
-                retry_after = exc.headers.get(
-                    "Retry-After"
-                )
-
-                try:
-                    wait = float(retry_after)
-                except (TypeError, ValueError):
-                    wait = RATE_LIMIT_DELAY
-
-                wait = max(
-                    wait,
-                    RATE_LIMIT_DELAY
-                )
-
-                wait = min(
-                    wait,
-                    MAX_RETRY_DELAY
-                )
-
-                print(
-                    f"HTTP 429 "
-                    f"(attempt {attempt}/{MAX_RETRIES})"
-                )
-
-                print(
-                    f"Rate limited. "
-                    f"Waiting {int(wait)} seconds..."
-                )
-
+            r = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            if r.status_code == 429:
+                wait = min(30, 3 * attempt)
+                print(f"429 rate limit; waiting {wait}s (attempt {attempt}/{RETRIES})")
                 time.sleep(wait)
-
                 continue
-
-
-            if exc.code in (
-                500,
-                502,
-                503,
-                504
-            ):
-
-                wait = min(
-                    30 * (2 ** (attempt - 1)),
-                    MAX_RETRY_DELAY
-                )
-
-                print(
-                    f"HTTP {exc.code} "
-                    f"(attempt {attempt}/{MAX_RETRIES})"
-                )
-
-                print(
-                    f"Waiting {int(wait)} seconds..."
-                )
-
-                time.sleep(wait)
-
-                continue
-
-
-            raise
-
-
-        except Exception as exc:
-
+            r.raise_for_status()
+            return r.json()
+        except (requests.RequestException, ValueError) as exc:
             last_error = exc
-
-            wait = min(
-                20 * (2 ** (attempt - 1)),
-                MAX_RETRY_DELAY
-            )
-
-            print(
-                f"Network error: {exc} "
-                f"(attempt {attempt}/{MAX_RETRIES})"
-            )
-
-            print(
-                f"Waiting {int(wait)} seconds..."
-            )
-
+            wait = min(20, 2 * attempt)
+            print(f"Request failed: {exc}; waiting {wait}s (attempt {attempt}/{RETRIES})")
             time.sleep(wait)
+    raise RuntimeError(f"Request failed after {RETRIES} attempts: {last_error}")
 
 
-    raise RuntimeError(
-        f"Failed to fetch API after "
-        f"{MAX_RETRIES} attempts: "
-        f"{last_error}"
-    )
+def parse_hourly(payload):
+    # Multiple-coordinate requests return a list of location objects.
+    if isinstance(payload, list):
+        return payload
+    return [payload]
 
 
-# ============================================================
-# BUILD API URL
-# ============================================================
+def six_hour_totals(payload, max_periods=FORECAST_DAYS * 4):
+    hourly = payload.get("hourly", {})
+    values = hourly.get("precipitation") or []
+    times = hourly.get("time") or []
 
-def build_url(endpoint, points):
-
-    latitudes = ",".join(
-        f"{p['lat']:.2f}"
-        for p in points
-    )
-
-    longitudes = ",".join(
-        f"{p['lon']:.2f}"
-        for p in points
-    )
-
-    params = {
-        "latitude": latitudes,
-        "longitude": longitudes,
-        "hourly": "precipitation",
-        "forecast_days": str(
-            FORECAST_DAYS
-        ),
-        "timezone": "GMT",
-        "cell_selection": "nearest",
-    }
-
-    return (
-        endpoint
-        + "?"
-        + urllib.parse.urlencode(
-            params,
-            safe=","
-        )
-    )
-
-
-# ============================================================
-# CONVERT HOURLY TO 6-HOUR TOTALS
-# ============================================================
-
-def six_hour_totals(values):
-
-    result = []
-
-    for period in range(PERIODS):
-
-        start = period * 6
+    # Need one 6-hour block for every forecast period. Open-Meteo's
+    # hourly precipitation value at HH is the precipitation during
+    # the preceding hour, so indices 1..6 form the 00-06 UTC block.
+    periods = []
+    for p in range(max_periods):
+        start = 1 + p * 6
         end = start + 6
-
-        chunk = values[start:end]
-
-        if len(chunk) < 6:
-
-            result.append(None)
-
+        block = values[start:end]
+        if len(block) < 6:
+            periods.append(None)
             continue
+        periods.append(round(sum(float(v or 0.0) for v in block), 2))
+    return periods, times
 
-        total = 0.0
 
-        for value in chunk:
+MODEL_HORIZONS = {
+    "ECMWF HRES": 12,
+    "GEM": 10,
+    "GFS": 12,
+    "ICON": 7,
+}
 
-            if value is None:
-                continue
 
-            try:
-                total += float(value)
-            except (TypeError, ValueError):
-                pass
+def fetch_model(model_name, url, source_points):
+    print(f"\n=== {model_name} ===")
+    result = {}
 
-        result.append(
-            round(total, 2)
-        )
+    model_days = MODEL_HORIZONS[model_name]
+    for start in range(0, len(source_points), BATCH_SIZE):
+        batch = source_points[start:start + BATCH_SIZE]
+        lats = ",".join(str(p[0]) for p in batch)
+        lons = ",".join(str(p[1]) for p in batch)
+
+        params = {
+            "latitude": lats,
+            "longitude": lons,
+            "hourly": "precipitation",
+            "forecast_days": model_days,
+            "timezone": "UTC",
+            "precipitation_unit": "mm",
+        }
+
+        print(f"Batch {start // BATCH_SIZE + 1}: {len(batch)} points")
+        payload = request_json(url, params)
+        locations = parse_hourly(payload)
+
+        if len(locations) != len(batch):
+            raise RuntimeError(
+                f"{model_name}: API returned {len(locations)} locations for {len(batch)} requested"
+            )
+
+        for point, loc in zip(batch, locations):
+            periods, times = six_hour_totals(loc, max_periods=model_days * 4)
+            key = (point[0], point[1])
+            result[key] = {
+                "values": periods,
+                "times": times,
+            }
 
     return result
 
 
-# ============================================================
-# DOWNLOAD ONE MODEL
-# ============================================================
+def bilinear(v00, v10, v01, v11, fx, fy):
+    return (
+        v00 * (1 - fx) * (1 - fy)
+        + v10 * fx * (1 - fy)
+        + v01 * (1 - fx) * fy
+        + v11 * fx * fy
+    )
 
-def update_model(
-    model_name,
-    endpoint,
-    grid
-):
 
-    print()
-    print("=" * 60)
-    print(f"Downloading {model_name}")
-    print("=" * 60)
+def interpolate_value(src, lats, lons, lat, lon, period):
+    # Clamp to source domain.
+    lat = min(max(lat, lats[0]), lats[-1])
+    lon = min(max(lon, lons[0]), lons[-1])
 
-    batches = [
-        grid[i:i + BATCH_SIZE]
-        for i in range(
-            0,
-            len(grid),
-            BATCH_SIZE
-        )
+    lat_pos = (lat - lats[0]) / SOURCE_STEP
+    lon_pos = (lon - lons[0]) / SOURCE_STEP
+    j0 = min(int(math.floor(lat_pos)), len(lats) - 2)
+    i0 = min(int(math.floor(lon_pos)), len(lons) - 2)
+    fy = lat_pos - j0
+    fx = lon_pos - i0
+
+    def value(j, i):
+        arr = src.get((lats[j], lons[i]))
+        if not arr or period >= len(arr):
+            return None
+        v = arr[period]
+        return None if v is None else float(v)
+
+    vals = [
+        value(j0, i0),
+        value(j0, i0 + 1),
+        value(j0 + 1, i0),
+        value(j0 + 1, i0 + 1),
     ]
 
-    print(
-        f"Grid points: {len(grid)}"
-    )
+    # If a model has no forecast at a corner (for example GEM after
+    # its 10-day horizon), interpolate only across available values.
+    available = [v for v in vals if v is not None]
+    if not available:
+        return None
+    if len(available) < 4:
+        return round(sum(available) / len(available), 2)
+
+    return round(bilinear(vals[0], vals[1], vals[2], vals[3], fx, fy), 2)
 
-    print(
-        f"Batch size: {BATCH_SIZE}"
-    )
-
-    print(
-        f"Requests: {len(batches)}"
-    )
-
-    for number, batch in enumerate(
-        batches,
-        start=1
-    ):
-
-        print(
-            f"{model_name}: "
-            f"batch {number}/{len(batches)}"
-        )
-
-        url = build_url(
-            endpoint,
-            batch
-        )
-
-        result = fetch_json(url)
-
-        if isinstance(result, list):
-            locations = result
-        else:
-            locations = [result]
-
-        if len(locations) != len(batch):
-
-            raise RuntimeError(
-                f"{model_name}: API returned "
-                f"{len(locations)} locations "
-                f"for {len(batch)} requested"
-            )
-
-        for point, location in zip(
-            batch,
-            locations
-        ):
-
-            hourly = location.get(
-                "hourly",
-                {}
-            )
-
-            precipitation = hourly.get(
-                "precipitation",
-                []
-            )
-
-            point["models"][model_name] = (
-                six_hour_totals(
-                    precipitation
-                )
-            )
-
-        if number < len(batches):
-
-            time.sleep(
-                REQUEST_DELAY
-            )
-
-    print(
-        f"{model_name} completed."
-    )
-
-
-# ============================================================
-# CREATE LOOKUP TABLE
-# ============================================================
-
-def make_lookup(grid):
-
-    lookup = {}
-
-    for point in grid:
-
-        key = (
-            round(point["lat"], 2),
-            round(point["lon"], 2)
-        )
-
-        lookup[key] = point
-
-    return lookup
-
-
-# ============================================================
-# BILINEAR INTERPOLATION
-# ============================================================
-
-def interpolate_value(
-    lookup,
-    lat,
-    lon,
-    model,
-    period
-):
-
-    # Source-grid lower-left coordinate
-
-    lat0 = int(
-        (lat - LAT_MIN)
-        // SOURCE_STEP
-    ) * SOURCE_STEP + LAT_MIN
-
-    lon0 = int(
-        (lon - LON_MIN)
-        // SOURCE_STEP
-    ) * SOURCE_STEP + LON_MIN
-
-    lat0 = round(
-        max(
-            LAT_MIN,
-            min(
-                LAT_MAX - SOURCE_STEP,
-                lat0
-            )
-        ),
-        2
-    )
-
-    lon0 = round(
-        max(
-            LON_MIN,
-            min(
-                LON_MAX - SOURCE_STEP,
-                lon0
-            )
-        ),
-        2
-    )
-
-    lat1 = round(
-        lat0 + SOURCE_STEP,
-        2
-    )
-
-    lon1 = round(
-        lon0 + SOURCE_STEP,
-        2
-    )
-
-
-    points = []
-
-    for la, lo in [
-        (lat0, lon0),
-        (lat0, lon1),
-        (lat1, lon0),
-        (lat1, lon1),
-    ]:
-
-        point = lookup.get(
-            (round(la, 2), round(lo, 2))
-        )
-
-        if point is None:
-            return None
-
-        values = (
-            point
-            .get("models", {})
-            .get(model)
-        )
-
-        if (
-            values is None
-            or period >= len(values)
-        ):
-            return None
-
-        value = values[period]
-
-        if value is None:
-            return None
-
-        points.append(
-            float(value)
-        )
-
-
-    q11, q12, q21, q22 = points
-
-
-    # Fractional position
-
-    if SOURCE_STEP == 0:
-        return q11
-
-    x = (
-        lon - lon0
-    ) / SOURCE_STEP
-
-    y = (
-        lat - lat0
-    ) / SOURCE_STEP
-
-
-    value = (
-        q11 * (1 - x) * (1 - y)
-        + q12 * x * (1 - y)
-        + q21 * (1 - x) * y
-        + q22 * x * y
-    )
-
-
-    return round(
-        max(0.0, value),
-        2
-    )
-
-
-# ============================================================
-# CREATE FINAL 0.5 DEGREE GRID
-# ============================================================
-
-def interpolate_grid(
-    source_grid
-):
-
-    print()
-    print("=" * 60)
-    print("Creating 0.5° display grid")
-    print("=" * 60)
-
-    lookup = make_lookup(
-        source_grid
-    )
-
-    display_grid = build_grid(
-        DISPLAY_STEP
-    )
-
-    models = list(
-        MODELS.keys()
-    )
-
-    for point in display_grid:
-
-        for model in models:
-
-            values = []
-
-            for period in range(
-                PERIODS
-            ):
-
-                value = interpolate_value(
-                    lookup,
-                    point["lat"],
-                    point["lon"],
-                    model,
-                    period
-                )
-
-                values.append(
-                    value
-                )
-
-            point["models"][model] = (
-                values
-            )
-
-    print(
-        f"Display points: "
-        f"{len(display_grid)}"
-    )
-
-    return display_grid
-
-
-# ============================================================
-# MAIN
-# ============================================================
 
 def main():
+    source_lats = frange(LAT_MIN, LAT_MAX, SOURCE_STEP)
+    source_lons = frange(LON_MIN, LON_MAX, SOURCE_STEP)
+    display_lats = frange(LAT_MIN, LAT_MAX, DISPLAY_STEP)
+    display_lons = frange(LON_MIN, LON_MAX, DISPLAY_STEP)
 
-    started = datetime.now(
-        timezone.utc
-    ).isoformat()
+    source_points = [(lat, lon) for lat in source_lats for lon in source_lons]
+    print(f"Source grid: {len(source_points)} points")
+    print(f"Display grid: {len(display_lats) * len(display_lons)} points")
+    print(f"Forecast horizon: {FORECAST_DAYS} days / {FORECAST_DAYS * 4} six-hour periods")
 
-    print("=" * 60)
-    print("MASRAINMAN RAINFALL UPDATER")
-    print("=" * 60)
+    model_source = {}
+    model_times = {}
+    for model_name, url in MODELS.items():
+        fetched = fetch_model(model_name, url, source_points)
+        model_source[model_name] = {k: v["values"] for k, v in fetched.items()}
+        # Use the first available point as the common model time axis.
+        first = next(iter(fetched.values()), None)
+        model_times[model_name] = first["times"] if first else []
 
-    print(
-        f"Started: {started}"
+    # Use ECMWF's hourly timestamps as the primary time reference when available.
+    primary_times = model_times.get("ECMWF HRES") or next(
+        (v for v in model_times.values() if v), []
     )
-
-    print(
-        f"Domain: "
-        f"{LAT_MIN}–{LAT_MAX} N, "
-        f"{LON_MIN}–{LON_MAX} E"
-    )
-
-    print(
-        f"API grid: "
-        f"{SOURCE_STEP}°"
-    )
-
-    print(
-        f"Display grid: "
-        f"{DISPLAY_STEP}°"
-    )
-
-    print(
-        f"Batch size: "
-        f"{BATCH_SIZE}"
-    )
-
-    print(
-        f"Forecast: "
-        f"{FORECAST_DAYS} days"
-    )
-
-    source_grid = build_grid(
-        SOURCE_STEP
-    )
-
-    print(
-        f"API grid points: "
-        f"{len(source_grid)}"
-    )
-
-    print("=" * 60)
-
-
-    # --------------------------------------------------------
-    # Download four models
-    # --------------------------------------------------------
-
-    for model_name, endpoint in (
-        MODELS.items()
-    ):
-
-        update_model(
-            model_name,
-            endpoint,
-            source_grid
-        )
-
-
-    # --------------------------------------------------------
-    # Interpolate
-    # --------------------------------------------------------
-
-    display_grid = interpolate_grid(
-        source_grid
-    )
-
-
-    # --------------------------------------------------------
-    # Period labels
-    # --------------------------------------------------------
 
     periods = []
+    for day in range(1, FORECAST_DAYS + 1):
+        periods.append(f"Day {day}")
 
-    for i in range(PERIODS):
+    grid = []
+    for lat in display_lats:
+        for lon in display_lons:
+            models = {}
+            for model_name in MODELS:
+                vals = []
+                for day in range(FORECAST_DAYS):
+                    six_hour_indices = range(day * 4, day * 4 + 4)
+                    day_values = [
+                        interpolate_value(
+                            model_source[model_name],
+                            source_lats,
+                            source_lons,
+                            lat,
+                            lon,
+                            p,
+                        )
+                        for p in six_hour_indices
+                    ]
+                    if all(v is None for v in day_values):
+                        vals.append(None)
+                    else:
+                        vals.append(round(sum(v or 0.0 for v in day_values), 2))
+                models[model_name] = vals
+            grid.append({"lat": lat, "lon": lon, "models": models})
 
-        start = i * 6
-        end = start + 6
+    # Forecast day validity is based on the model's first 00 UTC timestamp.
+    valid_days = []
+    if primary_times:
+        # First timestamp is normally 00:00 UTC. Day 1 ends 24h later.
+        # Store the start/end UTC timestamps so the browser can display them.
+        try:
+            run_time = datetime.fromisoformat(primary_times[0].replace("Z", "+00:00"))
+            for day in range(FORECAST_DAYS):
+                start = run_time.timestamp() + day * 86400
+                end = start + 86400
+                valid_days.append({
+                    "start": datetime.fromtimestamp(start, timezone.utc).isoformat(),
+                    "end": datetime.fromtimestamp(end, timezone.utc).isoformat(),
+                })
+        except Exception:
+            valid_days = []
 
-        periods.append(
-            f"{start}–{end} h"
-        )
-
-
-    # --------------------------------------------------------
-    # Output
-    # --------------------------------------------------------
-
-    updated = datetime.now(
-        timezone.utc
-    ).isoformat()
-
-    output = {
-
-        "updated": updated,
-
-        "source": (
-            "Open-Meteo model-specific APIs; "
-            "1° source grid interpolated "
-            "to 0.5° display grid"
-        ),
-
+    out = {
+        "updated": datetime.now(timezone.utc).isoformat(),
+        "source": "Open-Meteo model-specific APIs; 1° source grid interpolated to 0.5° display grid",
         "domain": {
-
             "lat_min": LAT_MIN,
             "lat_max": LAT_MAX,
-
             "lon_min": LON_MIN,
             "lon_max": LON_MAX,
         },
-
         "step": DISPLAY_STEP,
-
         "source_step": SOURCE_STEP,
-
+        "forecast_days": FORECAST_DAYS,
         "periods": periods,
-
-        "models": list(
-            MODELS.keys()
-        ),
-
-        "grid": display_grid,
+        "valid_days": valid_days,
+        "models": list(MODELS.keys()),
+        "model_horizons": MODEL_HORIZONS,
+        "grid": grid,
     }
 
-
-    print()
-    print("=" * 60)
-    print("Writing data.json")
-    print("=" * 60)
-
-    with OUTPUT.open(
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        json.dump(
-            output,
-            f,
-            separators=(",", ":")
-        )
-
-
-    size_kb = (
-        OUTPUT.stat().st_size
-        / 1024
-    )
-
-
-    print(
-        f"data.json written successfully "
-        f"({size_kb:.1f} KB)"
-    )
-
-    print()
-    print("=" * 60)
-    print("MASRAINMAN UPDATE COMPLETE")
-    print("=" * 60)
-
-    print(
-        f"Updated: {updated}"
-    )
+    tmp = OUT.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(out, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
+    tmp.replace(OUT)
+    print(f"Wrote {OUT} ({OUT.stat().st_size / 1024 / 1024:.2f} MB)")
 
 
 if __name__ == "__main__":
-
     main()
