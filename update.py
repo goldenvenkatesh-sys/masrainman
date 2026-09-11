@@ -1,5 +1,4 @@
 import json
-import math
 import time
 import urllib.parse
 import urllib.request
@@ -10,8 +9,15 @@ from pathlib import Path
 
 # ============================================================
 # MASRAINMAN RAINFALL UPDATER
-# Pan-India / 0.50 degree / 3 days / 6-hour rainfall
+#
+# Pan-India
+# 1.0 degree API source grid
+# 0.5 degree interpolated display grid
+# 3 days
+# 6-hour rainfall
+# ECMWF / GEM / GFS / ICON
 # ============================================================
+
 
 MODELS = {
     "ECMWF HRES": "https://api.open-meteo.com/v1/ecmwf",
@@ -20,74 +26,86 @@ MODELS = {
     "ICON": "https://api.open-meteo.com/v1/dwd-icon",
 }
 
-# Pan-India + surrounding seas
+
+# ============================================================
+# DOMAIN
+# ============================================================
+
 LAT_MIN = 5.0
 LAT_MAX = 38.0
+
 LON_MIN = 65.0
 LON_MAX = 100.0
 
-# 0.50 degree source grid
-GRID_STEP = 0.50
 
-# Larger coordinate batches = fewer HTTP requests
-BATCH_SIZE = 500
+# API source grid
+SOURCE_STEP = 1.0
 
-# 3 days
+# Final display grid
+DISPLAY_STEP = 0.5
+
+
+# Keep requests comfortably sized
+BATCH_SIZE = 300
+
+
 FORECAST_DAYS = 3
-
-# 4 x 6-hour periods per day
 PERIODS = FORECAST_DAYS * 4
 
-# Retry configuration
+
 MAX_RETRIES = 8
 
-# Delay between successful API requests
-REQUEST_DELAY = 5.0
+REQUEST_DELAY = 8.0
 
-# Minimum wait after HTTP 429
-RATE_LIMIT_DELAY = 60.0
+RATE_LIMIT_DELAY = 90.0
 
-# Maximum retry wait
 MAX_RETRY_DELAY = 300.0
+
 
 OUTPUT = Path("data.json")
 
 
 # ============================================================
-# GRID
+# BUILD GRID
 # ============================================================
 
-def build_grid():
+def build_grid(step):
+
     grid = []
 
     lat = LAT_MIN
+
     while lat <= LAT_MAX + 1e-9:
+
         lon = LON_MIN
 
         while lon <= LON_MAX + 1e-9:
+
             grid.append({
                 "lat": round(lat, 2),
                 "lon": round(lon, 2),
                 "models": {}
             })
 
-            lon += GRID_STEP
+            lon += step
 
-        lat += GRID_STEP
+        lat += step
 
     return grid
 
 
 # ============================================================
-# HTTP
+# HTTP FETCH
 # ============================================================
 
 def fetch_json(url):
+
     last_error = None
 
     for attempt in range(1, MAX_RETRIES + 1):
 
         try:
+
             request = urllib.request.Request(
                 url,
                 headers={
@@ -97,11 +115,15 @@ def fetch_json(url):
 
             with urllib.request.urlopen(
                 request,
-                timeout=90
+                timeout=120
             ) as response:
 
                 raw = response.read()
-                return json.loads(raw.decode("utf-8"))
+
+                return json.loads(
+                    raw.decode("utf-8")
+                )
+
 
         except urllib.error.HTTPError as exc:
 
@@ -109,29 +131,46 @@ def fetch_json(url):
 
             if exc.code == 429:
 
-                # Respect Retry-After when supplied
-                retry_after = exc.headers.get("Retry-After")
+                retry_after = exc.headers.get(
+                    "Retry-After"
+                )
 
                 try:
                     wait = float(retry_after)
                 except (TypeError, ValueError):
                     wait = RATE_LIMIT_DELAY
 
-                wait = max(wait, RATE_LIMIT_DELAY)
-                wait = min(wait, MAX_RETRY_DELAY)
+                wait = max(
+                    wait,
+                    RATE_LIMIT_DELAY
+                )
+
+                wait = min(
+                    wait,
+                    MAX_RETRY_DELAY
+                )
 
                 print(
-                    f"HTTP 429 (attempt {attempt}/{MAX_RETRIES})"
+                    f"HTTP 429 "
+                    f"(attempt {attempt}/{MAX_RETRIES})"
                 )
+
                 print(
-                    f"Rate limited. Waiting {int(wait)} seconds..."
+                    f"Rate limited. "
+                    f"Waiting {int(wait)} seconds..."
                 )
 
                 time.sleep(wait)
 
                 continue
 
-            if exc.code in (500, 502, 503, 504):
+
+            if exc.code in (
+                500,
+                502,
+                503,
+                504
+            ):
 
                 wait = min(
                     30 * (2 ** (attempt - 1)),
@@ -142,6 +181,7 @@ def fetch_json(url):
                     f"HTTP {exc.code} "
                     f"(attempt {attempt}/{MAX_RETRIES})"
                 )
+
                 print(
                     f"Waiting {int(wait)} seconds..."
                 )
@@ -150,14 +190,16 @@ def fetch_json(url):
 
                 continue
 
+
             raise
+
 
         except Exception as exc:
 
             last_error = exc
 
             wait = min(
-                15 * (2 ** (attempt - 1)),
+                20 * (2 ** (attempt - 1)),
                 MAX_RETRY_DELAY
             )
 
@@ -165,55 +207,63 @@ def fetch_json(url):
                 f"Network error: {exc} "
                 f"(attempt {attempt}/{MAX_RETRIES})"
             )
+
             print(
                 f"Waiting {int(wait)} seconds..."
             )
 
             time.sleep(wait)
 
+
     raise RuntimeError(
         f"Failed to fetch API after "
-        f"{MAX_RETRIES} attempts: {last_error}"
+        f"{MAX_RETRIES} attempts: "
+        f"{last_error}"
     )
 
 
 # ============================================================
-# URL
+# BUILD API URL
 # ============================================================
 
 def build_url(endpoint, points):
 
     latitudes = ",".join(
-        f"{p['lat']:.2f}" for p in points
+        f"{p['lat']:.2f}"
+        for p in points
     )
 
     longitudes = ",".join(
-        f"{p['lon']:.2f}" for p in points
+        f"{p['lon']:.2f}"
+        for p in points
     )
 
     params = {
         "latitude": latitudes,
         "longitude": longitudes,
         "hourly": "precipitation",
-        "forecast_days": str(FORECAST_DAYS),
+        "forecast_days": str(
+            FORECAST_DAYS
+        ),
         "timezone": "GMT",
         "cell_selection": "nearest",
     }
 
-    return endpoint + "?" + urllib.parse.urlencode(
-        params,
-        safe=","
+    return (
+        endpoint
+        + "?"
+        + urllib.parse.urlencode(
+            params,
+            safe=","
+        )
     )
 
 
 # ============================================================
-# RAINFALL CONVERSION
+# CONVERT HOURLY TO 6-HOUR TOTALS
 # ============================================================
 
 def six_hour_totals(values):
-    """
-    Convert hourly precipitation into 12 x 6-hour totals.
-    """
 
     result = []
 
@@ -225,28 +275,39 @@ def six_hour_totals(values):
         chunk = values[start:end]
 
         if len(chunk) < 6:
+
             result.append(None)
+
             continue
 
         total = 0.0
 
         for value in chunk:
-            if value is not None:
-                try:
-                    total += float(value)
-                except (TypeError, ValueError):
-                    pass
 
-        result.append(round(total, 2))
+            if value is None:
+                continue
+
+            try:
+                total += float(value)
+            except (TypeError, ValueError):
+                pass
+
+        result.append(
+            round(total, 2)
+        )
 
     return result
 
 
 # ============================================================
-# MODEL UPDATE
+# DOWNLOAD ONE MODEL
 # ============================================================
 
-def update_model(model_name, endpoint, grid):
+def update_model(
+    model_name,
+    endpoint,
+    grid
+):
 
     print()
     print("=" * 60)
@@ -255,26 +316,42 @@ def update_model(model_name, endpoint, grid):
 
     batches = [
         grid[i:i + BATCH_SIZE]
-        for i in range(0, len(grid), BATCH_SIZE)
+        for i in range(
+            0,
+            len(grid),
+            BATCH_SIZE
+        )
     ]
 
-    print(f"Grid points: {len(grid)}")
-    print(f"Batch size: {BATCH_SIZE}")
-    print(f"Requests: {len(batches)}")
+    print(
+        f"Grid points: {len(grid)}"
+    )
 
-    for batch_number, batch in enumerate(batches, start=1):
+    print(
+        f"Batch size: {BATCH_SIZE}"
+    )
+
+    print(
+        f"Requests: {len(batches)}"
+    )
+
+    for number, batch in enumerate(
+        batches,
+        start=1
+    ):
 
         print(
             f"{model_name}: "
-            f"batch {batch_number}/{len(batches)}"
+            f"batch {number}/{len(batches)}"
         )
 
-        url = build_url(endpoint, batch)
+        url = build_url(
+            endpoint,
+            batch
+        )
 
         result = fetch_json(url)
 
-        # Multiple coordinates return a list.
-        # A single coordinate returns one dictionary.
         if isinstance(result, list):
             locations = result
         else:
@@ -284,27 +361,245 @@ def update_model(model_name, endpoint, grid):
 
             raise RuntimeError(
                 f"{model_name}: API returned "
-                f"{len(locations)} locations for "
-                f"{len(batch)} requested points"
+                f"{len(locations)} locations "
+                f"for {len(batch)} requested"
             )
 
-        for point, location in zip(batch, locations):
+        for point, location in zip(
+            batch,
+            locations
+        ):
 
-            hourly = location.get("hourly", {})
+            hourly = location.get(
+                "hourly",
+                {}
+            )
+
             precipitation = hourly.get(
                 "precipitation",
                 []
             )
 
             point["models"][model_name] = (
-                six_hour_totals(precipitation)
+                six_hour_totals(
+                    precipitation
+                )
             )
 
-        # Slow down slightly between requests
-        if batch_number < len(batches):
-            time.sleep(REQUEST_DELAY)
+        if number < len(batches):
 
-    print(f"{model_name} completed.")
+            time.sleep(
+                REQUEST_DELAY
+            )
+
+    print(
+        f"{model_name} completed."
+    )
+
+
+# ============================================================
+# CREATE LOOKUP TABLE
+# ============================================================
+
+def make_lookup(grid):
+
+    lookup = {}
+
+    for point in grid:
+
+        key = (
+            round(point["lat"], 2),
+            round(point["lon"], 2)
+        )
+
+        lookup[key] = point
+
+    return lookup
+
+
+# ============================================================
+# BILINEAR INTERPOLATION
+# ============================================================
+
+def interpolate_value(
+    lookup,
+    lat,
+    lon,
+    model,
+    period
+):
+
+    # Source-grid lower-left coordinate
+
+    lat0 = int(
+        (lat - LAT_MIN)
+        // SOURCE_STEP
+    ) * SOURCE_STEP + LAT_MIN
+
+    lon0 = int(
+        (lon - LON_MIN)
+        // SOURCE_STEP
+    ) * SOURCE_STEP + LON_MIN
+
+    lat0 = round(
+        max(
+            LAT_MIN,
+            min(
+                LAT_MAX - SOURCE_STEP,
+                lat0
+            )
+        ),
+        2
+    )
+
+    lon0 = round(
+        max(
+            LON_MIN,
+            min(
+                LON_MAX - SOURCE_STEP,
+                lon0
+            )
+        ),
+        2
+    )
+
+    lat1 = round(
+        lat0 + SOURCE_STEP,
+        2
+    )
+
+    lon1 = round(
+        lon0 + SOURCE_STEP,
+        2
+    )
+
+
+    points = []
+
+    for la, lo in [
+        (lat0, lon0),
+        (lat0, lon1),
+        (lat1, lon0),
+        (lat1, lon1),
+    ]:
+
+        point = lookup.get(
+            (round(la, 2), round(lo, 2))
+        )
+
+        if point is None:
+            return None
+
+        values = (
+            point
+            .get("models", {})
+            .get(model)
+        )
+
+        if (
+            values is None
+            or period >= len(values)
+        ):
+            return None
+
+        value = values[period]
+
+        if value is None:
+            return None
+
+        points.append(
+            float(value)
+        )
+
+
+    q11, q12, q21, q22 = points
+
+
+    # Fractional position
+
+    if SOURCE_STEP == 0:
+        return q11
+
+    x = (
+        lon - lon0
+    ) / SOURCE_STEP
+
+    y = (
+        lat - lat0
+    ) / SOURCE_STEP
+
+
+    value = (
+        q11 * (1 - x) * (1 - y)
+        + q12 * x * (1 - y)
+        + q21 * (1 - x) * y
+        + q22 * x * y
+    )
+
+
+    return round(
+        max(0.0, value),
+        2
+    )
+
+
+# ============================================================
+# CREATE FINAL 0.5 DEGREE GRID
+# ============================================================
+
+def interpolate_grid(
+    source_grid
+):
+
+    print()
+    print("=" * 60)
+    print("Creating 0.5° display grid")
+    print("=" * 60)
+
+    lookup = make_lookup(
+        source_grid
+    )
+
+    display_grid = build_grid(
+        DISPLAY_STEP
+    )
+
+    models = list(
+        MODELS.keys()
+    )
+
+    for point in display_grid:
+
+        for model in models:
+
+            values = []
+
+            for period in range(
+                PERIODS
+            ):
+
+                value = interpolate_value(
+                    lookup,
+                    point["lat"],
+                    point["lon"],
+                    model,
+                    period
+                )
+
+                values.append(
+                    value
+                )
+
+            point["models"][model] = (
+                values
+            )
+
+    print(
+        f"Display points: "
+        f"{len(display_grid)}"
+    )
+
+    return display_grid
 
 
 # ============================================================
@@ -321,7 +616,9 @@ def main():
     print("MASRAINMAN RAINFALL UPDATER")
     print("=" * 60)
 
-    print(f"Started: {started}")
+    print(
+        f"Started: {started}"
+    )
 
     print(
         f"Domain: "
@@ -330,41 +627,64 @@ def main():
     )
 
     print(
-        f"Grid step: {GRID_STEP}°"
+        f"API grid: "
+        f"{SOURCE_STEP}°"
     )
 
     print(
-        f"Batch size: {BATCH_SIZE}"
+        f"Display grid: "
+        f"{DISPLAY_STEP}°"
     )
 
     print(
-        f"Forecast: {FORECAST_DAYS} days"
+        f"Batch size: "
+        f"{BATCH_SIZE}"
     )
 
-    grid = build_grid()
+    print(
+        f"Forecast: "
+        f"{FORECAST_DAYS} days"
+    )
+
+    source_grid = build_grid(
+        SOURCE_STEP
+    )
 
     print(
-        f"Grid points: {len(grid)}"
+        f"API grid points: "
+        f"{len(source_grid)}"
     )
 
     print("=" * 60)
 
-    # Download each model
-    for model_name, endpoint in MODELS.items():
+
+    # --------------------------------------------------------
+    # Download four models
+    # --------------------------------------------------------
+
+    for model_name, endpoint in (
+        MODELS.items()
+    ):
 
         update_model(
             model_name,
             endpoint,
-            grid
+            source_grid
         )
 
-    # ========================================================
-    # OUTPUT
-    # ========================================================
 
-    updated = datetime.now(
-        timezone.utc
-    ).isoformat()
+    # --------------------------------------------------------
+    # Interpolate
+    # --------------------------------------------------------
+
+    display_grid = interpolate_grid(
+        source_grid
+    )
+
+
+    # --------------------------------------------------------
+    # Period labels
+    # --------------------------------------------------------
 
     periods = []
 
@@ -377,28 +697,47 @@ def main():
             f"{start}–{end} h"
         )
 
+
+    # --------------------------------------------------------
+    # Output
+    # --------------------------------------------------------
+
+    updated = datetime.now(
+        timezone.utc
+    ).isoformat()
+
     output = {
+
         "updated": updated,
 
         "source": (
-            "Open-Meteo model-specific APIs"
+            "Open-Meteo model-specific APIs; "
+            "1° source grid interpolated "
+            "to 0.5° display grid"
         ),
 
         "domain": {
+
             "lat_min": LAT_MIN,
             "lat_max": LAT_MAX,
+
             "lon_min": LON_MIN,
             "lon_max": LON_MAX,
         },
 
-        "step": GRID_STEP,
+        "step": DISPLAY_STEP,
+
+        "source_step": SOURCE_STEP,
 
         "periods": periods,
 
-        "models": list(MODELS.keys()),
+        "models": list(
+            MODELS.keys()
+        ),
 
-        "grid": grid,
+        "grid": display_grid,
     }
+
 
     print()
     print("=" * 60)
@@ -416,7 +755,12 @@ def main():
             separators=(",", ":")
         )
 
-    size_kb = OUTPUT.stat().st_size / 1024
+
+    size_kb = (
+        OUTPUT.stat().st_size
+        / 1024
+    )
+
 
     print(
         f"data.json written successfully "
@@ -434,4 +778,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
