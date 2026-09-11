@@ -65,6 +65,20 @@ function ensureUi() {
   const heading = document.querySelector("header h1");
   if (heading) heading.textContent = "24-Hour Rainfall Forecast";
 
+  // Model run / valid-time information panel.
+  if (!$("runDetails")) {
+    const details = document.createElement("div");
+    details.id = "runDetails";
+    details.className = "run-details";
+    details.innerHTML = `
+      <div class="run-details-title">Model Run & Valid Time</div>
+      <div id="runInfo">Loading…</div>
+    `;
+    const noteEl = aside.querySelector(".note");
+    if (noteEl) aside.insertBefore(details, noteEl);
+    else aside.appendChild(details);
+  }
+
   const note = aside.querySelector(".note");
   if (note) {
     note.innerHTML =
@@ -205,7 +219,24 @@ function updateHeader() {
     validText = `${formatIST(range.start)} IST – ${formatIST(range.end)} IST`;
   }
 
-  time.innerHTML = `<b>Run:</b> ${runText} &nbsp; | &nbsp; <b>Valid:</b> Day ${state.selectedDay + 1} &nbsp; ${validText}`;
+  time.innerHTML = `<b>Model Run:</b> ${runText} &nbsp; | &nbsp; <b>Valid:</b> Day ${state.selectedDay + 1} &nbsp; ${validText}`;
+
+  const runInfo = $("runInfo");
+  if (runInfo) {
+    const horizons = state.data.model_horizons || {};
+    const modelRows = (state.data.models || []).map(model => {
+      const days = horizons[model];
+      const available = Number.isFinite(days) ? `Day 1–${days}` : "Available";
+      return `<div class="run-model-row"><span>${escapeHtml(model)}</span><b>${available}</b></div>`;
+    }).join("");
+
+    runInfo.innerHTML =
+      `<div class="run-main"><span>Run</span><b>${runText}</b></div>` +
+      `<div class="run-main"><span>Valid period</span><b>Day ${state.selectedDay + 1}</b></div>` +
+      `<div class="run-valid">${validText}</div>` +
+      `<div class="run-subtitle">Model availability</div>` +
+      modelRows;
+  }
 }
 
 function setupMap() {
