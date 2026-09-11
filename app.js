@@ -1,6 +1,11 @@
 // ============================================================
-// MASRAINMAN — FAST + MODERATELY SMOOTH 6-HOURLY RAINFALL
-// V4
+// MASRAINMAN
+// FAST + SHARP + MODERATELY SMOOTH 6-HOURLY RAINFALL MAP
+// ============================================================
+
+
+// ============================================================
+// RAINFALL LEVELS
 // ============================================================
 
 const levels = [
@@ -8,6 +13,11 @@ const levels = [
   50, 60, 70, 80, 90, 100, 125, 150, 175, 200,
   250, 300, 400, 500, 600, 800
 ];
+
+
+// ============================================================
+// MASRAINMAN COLOUR SCALE
+// ============================================================
 
 const colors = [
   "#f2f2f2",
@@ -50,6 +60,9 @@ const map = L.map("map", {
   zoomControl: true
 });
 
+
+// India + surrounding sea
+
 map.fitBounds(
   [
     [5, 65],
@@ -69,51 +82,69 @@ L.tileLayer(
   "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   {
     maxZoom: 12,
-    attribution: "© OpenStreetMap contributors"
+    attribution:
+      "© OpenStreetMap contributors"
   }
 ).addTo(map);
 
 
 // ============================================================
-// VARIABLES
+// DATA VARIABLES
 // ============================================================
 
 let data = null;
+
 let rainLayer = null;
 
 let lats = [];
+
 let lons = [];
 
 let gridLookup = new Map();
 
 
 // ============================================================
-// RGB
+// RGB CONVERSION
 // ============================================================
 
 function hexToRgb(hex) {
 
-  hex = hex.replace("#", "");
+  hex =
+    hex.replace("#", "");
 
   return {
-    r: parseInt(hex.substring(0, 2), 16),
-    g: parseInt(hex.substring(2, 4), 16),
-    b: parseInt(hex.substring(4, 6), 16)
+    r: parseInt(
+      hex.substring(0, 2),
+      16
+    ),
+
+    g: parseInt(
+      hex.substring(2, 4),
+      16
+    ),
+
+    b: parseInt(
+      hex.substring(4, 6),
+      16
+    )
   };
 }
+
 
 const rgbColors =
   colors.map(hexToRgb);
 
 
 // ============================================================
-// MODEL SELECTION
+// SELECTED MODELS
 // ============================================================
 
 function getSelectedModels() {
 
   return [
-    ...document.querySelectorAll(".model:checked")
+    ...document.querySelectorAll(
+      ".model:checked"
+    )
   ].map(
     el => el.value
   );
@@ -121,10 +152,13 @@ function getSelectedModels() {
 
 
 // ============================================================
-// GRID LOOKUP
+// GET GRID POINT
 // ============================================================
 
-function getPoint(latIndex, lonIndex) {
+function getPoint(
+  latIndex,
+  lonIndex
+) {
 
   if (
     latIndex < 0 ||
@@ -135,24 +169,35 @@ function getPoint(latIndex, lonIndex) {
     return null;
   }
 
+
   const key =
     lats[latIndex].toFixed(4) +
     "," +
     lons[lonIndex].toFixed(4);
 
-  return gridLookup.get(key) || null;
+
+  return (
+    gridLookup.get(key) ||
+    null
+  );
 }
 
 
 // ============================================================
-// LOWER GRID INDEX
+// BINARY SEARCH — GRID INDEX
 // ============================================================
 
-function lowerIndex(array, value) {
+function lowerIndex(
+  array,
+  value
+) {
 
-  if (value <= array[0]) {
+  if (
+    value <= array[0]
+  ) {
     return 0;
   }
+
 
   if (
     value >=
@@ -161,22 +206,35 @@ function lowerIndex(array, value) {
     return array.length - 2;
   }
 
-  let low = 0;
-  let high = array.length - 1;
 
-  while (low <= high) {
+  let low = 0;
+
+  let high =
+    array.length - 1;
+
+
+  while (
+    low <= high
+  ) {
 
     const mid =
       (low + high) >> 1;
 
+
     if (
       array[mid] <= value
     ) {
-      low = mid + 1;
+
+      low =
+        mid + 1;
+
     } else {
-      high = mid - 1;
+
+      high =
+        mid - 1;
     }
   }
+
 
   return Math.max(
     0,
@@ -189,7 +247,7 @@ function lowerIndex(array, value) {
 
 
 // ============================================================
-// PREPARE SELECTED MODEL FIELD
+// BUILD SELECTED MODEL FIELD
 // ============================================================
 
 function buildField(
@@ -199,6 +257,7 @@ function buildField(
 
   const field = [];
 
+
   for (
     let y = 0;
     y < lats.length;
@@ -207,6 +266,7 @@ function buildField(
 
     const row = [];
 
+
     for (
       let x = 0;
       x < lons.length;
@@ -214,7 +274,11 @@ function buildField(
     ) {
 
       const point =
-        getPoint(y, x);
+        getPoint(
+          y,
+          x
+        );
+
 
       if (!point) {
 
@@ -234,15 +298,20 @@ function buildField(
             point.models &&
             point.models[model];
 
+
           if (
             arr &&
             Number.isFinite(
-              Number(arr[period])
+              Number(
+                arr[period]
+              )
             )
           ) {
 
             values.push(
-              Number(arr[period])
+              Number(
+                arr[period]
+              )
             );
           }
         }
@@ -259,20 +328,29 @@ function buildField(
           values.reduce(
             (a, b) => a + b,
             0
-          ) / values.length
+          ) /
+          values.length
         );
       }
     }
 
+
     field.push(row);
   }
+
 
   return field;
 }
 
 
 // ============================================================
-// FAST BILINEAR INTERPOLATION
+// BILINEAR INTERPOLATION
+// ============================================================
+//
+// Important:
+// No additional blur is applied.
+// This only interpolates between the existing
+// 0.5° source/display grid points.
 // ============================================================
 
 function interpolate(
@@ -287,6 +365,7 @@ function interpolate(
     lon < lons[0] ||
     lon > lons[lons.length - 1]
   ) {
+
     return null;
   }
 
@@ -296,6 +375,7 @@ function interpolate(
       lats,
       lat
     );
+
 
   const xi =
     lowerIndex(
@@ -310,6 +390,7 @@ function interpolate(
   const y1 =
     lats[yi + 1];
 
+
   const x0 =
     lons[xi];
 
@@ -318,39 +399,62 @@ function interpolate(
 
 
   let fx =
-    (lon - x0) /
-    (x1 - x0);
+    (
+      lon - x0
+    ) /
+    (
+      x1 - x0
+    );
+
 
   let fy =
-    (lat - y0) /
-    (y1 - y0);
+    (
+      lat - y0
+    ) /
+    (
+      y1 - y0
+    );
 
 
   fx =
     Math.max(
       0,
-      Math.min(1, fx)
+      Math.min(
+        1,
+        fx
+      )
     );
+
 
   fy =
     Math.max(
       0,
-      Math.min(1, fy)
+      Math.min(
+        1,
+        fy
+      )
     );
 
 
   const q11 =
     field[yi][xi];
 
+
   const q21 =
     field[yi][xi + 1];
+
 
   const q12 =
     field[yi + 1][xi];
 
+
   const q22 =
     field[yi + 1][xi + 1];
 
+
+  // ----------------------------------------------------------
+  // Missing-data fallback
+  // ----------------------------------------------------------
 
   if (
     q11 === null ||
@@ -365,7 +469,8 @@ function interpolate(
       q12,
       q22
     ].filter(
-      v => v !== null
+      value =>
+        value !== null
     );
 
 
@@ -378,20 +483,19 @@ function interpolate(
       values.reduce(
         (a, b) => a + b,
         0
-      ) / values.length
+      ) /
+      values.length
     );
   }
 
 
-  // Moderate smoothing.
-  // Much less than the previous version.
-
-  fx =
-    fx * fx * (3 - 2 * fx);
-
-  fy =
-    fy * fy * (3 - 2 * fy);
-
+  // ----------------------------------------------------------
+  // LINEAR BILINEAR INTERPOLATION
+  // ----------------------------------------------------------
+  //
+  // Deliberately NOT using smooth-step.
+  // This keeps rainfall features sharper.
+  // ----------------------------------------------------------
 
   const top =
     q11 * (1 - fx) +
@@ -411,22 +515,31 @@ function interpolate(
 
 
 // ============================================================
-// COLOUR
+// RAINFALL COLOUR
+// ============================================================
+//
+// Continuous colour transition between MasRainman
+// rainfall thresholds.
 // ============================================================
 
-function rainfallColor(value) {
+function rainfallColor(
+  value
+) {
 
   if (
     !Number.isFinite(value) ||
     value < levels[0]
   ) {
+
     return null;
   }
 
 
   if (
     value >=
-    levels[levels.length - 1]
+    levels[
+      levels.length - 1
+    ]
   ) {
 
     return rgbColors[
@@ -442,6 +555,7 @@ function rainfallColor(value) {
     i < levels.length - 1 &&
     value >= levels[i + 1]
   ) {
+
     i++;
   }
 
@@ -449,62 +563,77 @@ function rainfallColor(value) {
   const low =
     levels[i];
 
+
   const high =
     levels[i + 1];
 
 
   let t =
-    (value - low) /
-    (high - low);
+    (
+      value - low
+    ) /
+    (
+      high - low
+    );
 
 
   t =
     Math.max(
       0,
-      Math.min(1, t)
+      Math.min(
+        1,
+        t
+      )
     );
 
 
-  // Very mild colour smoothing
-
-  t =
-    t * t * (3 - 2 * t);
-
-
-  const a =
+  const c1 =
     rgbColors[i];
 
-  const b =
+
+  const c2 =
     rgbColors[i + 1];
 
 
   return {
+
     r: Math.round(
-      a.r +
-      (b.r - a.r) * t
+      c1.r +
+      (
+        c2.r -
+        c1.r
+      ) * t
     ),
 
     g: Math.round(
-      a.g +
-      (b.g - a.g) * t
+      c1.g +
+      (
+        c2.g -
+        c1.g
+      ) * t
     ),
 
     b: Math.round(
-      a.b +
-      (b.b - a.b) * t
+      c1.b +
+      (
+        c2.b -
+        c1.b
+      ) * t
     )
   };
 }
 
 
 // ============================================================
-// RAINFALL CANVAS
+// RAINFALL CANVAS LAYER
 // ============================================================
 
 const RainLayer =
   L.Layer.extend({
 
-    onAdd: function(map) {
+    onAdd: function(
+      map
+    ) {
 
       this._map =
         map;
@@ -516,17 +645,25 @@ const RainLayer =
         );
 
 
+      this._canvas.className =
+        "masrainman-rainfall";
+
+
       this._canvas.style.position =
         "absolute";
+
 
       this._canvas.style.left =
         "0px";
 
+
       this._canvas.style.top =
         "0px";
 
+
       this._canvas.style.pointerEvents =
         "none";
+
 
       this._canvas.style.zIndex =
         "350";
@@ -553,7 +690,9 @@ const RainLayer =
     },
 
 
-    onRemove: function(map) {
+    onRemove: function(
+      map
+    ) {
 
       map.off(
         "moveend zoomend resize",
@@ -561,7 +700,10 @@ const RainLayer =
       );
 
 
-      if (this._canvas) {
+      if (
+        this._canvas
+      ) {
+
         this._canvas.remove();
       }
     },
@@ -574,6 +716,7 @@ const RainLayer =
         !lats.length ||
         !lons.length
       ) {
+
         return;
       }
 
@@ -585,13 +728,18 @@ const RainLayer =
       const width =
         Math.max(
           1,
-          size.x
+          Math.floor(
+            size.x
+          )
         );
+
 
       const height =
         Math.max(
           1,
-          size.y
+          Math.floor(
+            size.y
+          )
         );
 
 
@@ -602,11 +750,14 @@ const RainLayer =
       canvas.width =
         width;
 
+
       canvas.height =
         height;
 
+
       canvas.style.width =
         width + "px";
+
 
       canvas.style.height =
         height + "px";
@@ -625,6 +776,10 @@ const RainLayer =
         height
       );
 
+
+      // ------------------------------------------------------
+      // CONTROLS
+      // ------------------------------------------------------
 
       const period =
         Number(
@@ -652,7 +807,7 @@ const RainLayer =
 
 
       // ------------------------------------------------------
-      // BUILD SOURCE FIELD ONCE
+      // BUILD MODEL MEAN FIELD
       // ------------------------------------------------------
 
       const field =
@@ -663,14 +818,16 @@ const RainLayer =
 
 
       // ------------------------------------------------------
-      // SMALL DISPLAY FIELD
+      // DISPLAY FIELD SIZE
+      // ------------------------------------------------------
+      //
+      // 330 x 198 gives much more detail than the previous
+      // 220 x 132 version while remaining fast.
       // ------------------------------------------------------
 
-      // Much smaller than the previous version.
-      // This is deliberately designed for speed.
+      const FW = 330;
 
-      const FW = 220;
-      const FH = 132;
+      const FH = 198;
 
 
       const small =
@@ -681,6 +838,7 @@ const RainLayer =
 
       small.width =
         FW;
+
 
       small.height =
         FH;
@@ -710,12 +868,13 @@ const RainLayer =
       const west =
         bounds.getWest();
 
+
       const east =
         bounds.getEast();
 
 
       // ------------------------------------------------------
-      // RENDER SMALL FIELD
+      // RENDER SMALL METEOROLOGICAL FIELD
       // ------------------------------------------------------
 
       for (
@@ -732,8 +891,7 @@ const RainLayer =
           height;
 
 
-        // Only one geographic conversion
-        // per row.
+        // One Leaflet conversion per row.
 
         const rowLat =
           this._map
@@ -742,7 +900,8 @@ const RainLayer =
                 0,
                 screenY
               )
-            ).lat;
+            )
+            .lat;
 
 
         for (
@@ -759,7 +918,8 @@ const RainLayer =
           const lon =
             west +
             (
-              east - west
+              east -
+              west
             ) *
             fraction;
 
@@ -776,6 +936,7 @@ const RainLayer =
             value === null ||
             value < levels[0]
           ) {
+
             continue;
           }
 
@@ -801,15 +962,19 @@ const RainLayer =
           pixels[index] =
             c.r;
 
+
           pixels[index + 1] =
             c.g;
+
 
           pixels[index + 2] =
             c.b;
 
+
           pixels[index + 3] =
             Math.round(
-              255 * opacity
+              255 *
+              opacity
             );
         }
       }
@@ -823,7 +988,11 @@ const RainLayer =
 
 
       // ------------------------------------------------------
-      // UPSCALE — NO HEAVY BLUR
+      // UPSCALE
+      // ------------------------------------------------------
+      //
+      // No blur.
+      // Only normal browser interpolation.
       // ------------------------------------------------------
 
       ctx.save();
@@ -836,9 +1005,6 @@ const RainLayer =
       ctx.imageSmoothingQuality =
         "medium";
 
-
-      // No Gaussian blur.
-      // This keeps rainfall cores sharper.
 
       ctx.filter =
         "none";
@@ -859,7 +1025,7 @@ const RainLayer =
 
 
 // ============================================================
-// DRAW
+// DRAW RAINFALL
 // ============================================================
 
 function drawRainfall() {
@@ -868,6 +1034,7 @@ function drawRainfall() {
     !data ||
     !gridLookup.size
   ) {
+
     return;
   }
 
@@ -912,7 +1079,10 @@ function buildLegend() {
 
 
   levels.forEach(
-    (value, i) => {
+    (
+      value,
+      i
+    ) => {
 
       const next =
         levels[i + 1];
@@ -938,98 +1108,127 @@ function buildLegend() {
 
 
 // ============================================================
-// MODEL RUN DISPLAY
+// MODEL RUN
+// ============================================================
+//
+// The current data.json stores the update timestamp.
+// We derive the 6-hour model cycle from that timestamp.
+//
+// Example:
+// 05:04 UTC → 00Z
+// 08:10 UTC → 06Z
+// 14:20 UTC → 12Z
+// 20:30 UTC → 18Z
 // ============================================================
 
 function getRunHour(
-  timestamp,
-  intervalHours
+  timestamp
 ) {
 
   if (!timestamp) {
-    return "--Z";
+    return null;
   }
 
 
-  const d =
-    new Date(timestamp);
+  const date =
+    new Date(
+      timestamp
+    );
 
 
   if (
     Number.isNaN(
-      d.getTime()
+      date.getTime()
     )
   ) {
-    return "--Z";
+
+    return null;
   }
 
 
-  const hour =
-    d.getUTCHours();
+  const utcHour =
+    date.getUTCHours();
 
 
-  const cycle =
+  const runHour =
     Math.floor(
-      hour / intervalHours
-    ) * intervalHours;
+      utcHour / 6
+    ) * 6;
 
 
-  return (
-    String(cycle)
-      .padStart(2, "0") +
-    "Z"
-  );
+  return String(
+    runHour
+  ).padStart(
+    2,
+    "0"
+  ) + "Z";
 }
 
 
-function buildRunText() {
+// ============================================================
+// FORMAT RUN DATE
+// ============================================================
 
-  if (!data || !data.updated) {
-    return "";
+function formatRunDate(
+  timestamp
+) {
+
+  if (!timestamp) {
+    return null;
   }
 
 
-  const ecmwf =
-    getRunHour(
-      data.updated,
-      6
+  const date =
+    new Date(
+      timestamp
     );
 
 
-  const gfs =
-    getRunHour(
-      data.updated,
-      6
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+
+    return null;
+  }
+
+
+  const day =
+    String(
+      date.getUTCDate()
+    ).padStart(
+      2,
+      "0"
     );
 
 
-  const icon =
-    getRunHour(
-      data.updated,
-      6
+  const month =
+    date.toLocaleString(
+      "en-US",
+      {
+        month: "short",
+        timeZone: "UTC"
+      }
     );
 
 
-  const gem =
-    getRunHour(
-      data.updated,
-      12
-    );
+  const year =
+    date.getUTCFullYear();
 
 
   return (
-    "Runs: " +
-    "ECMWF " + ecmwf +
-    " • GEM " + gem +
-    " • GFS " + gfs +
-    " • ICON " + icon +
-    " UTC"
+    day +
+    " " +
+    month +
+    " " +
+    year
   );
 }
 
 
 // ============================================================
-// TOP INFORMATION
+// UPDATE TOP-RIGHT RUN DISPLAY
 // ============================================================
 
 function updateHeader() {
@@ -1040,26 +1239,63 @@ function updateHeader() {
     );
 
 
-  if (!time || !data) {
+  if (
+    !time ||
+    !data ||
+    !data.updated
+  ) {
+
     return;
   }
 
 
-  const runText =
-    buildRunText();
+  const runDate =
+    formatRunDate(
+      data.updated
+    );
+
+
+  const runHour =
+    getRunHour(
+      data.updated
+    );
+
+
+  if (
+    !runDate ||
+    !runHour
+  ) {
+
+    time.textContent =
+      "Run : --";
+
+    return;
+  }
 
 
   time.textContent =
-    "Updated: " +
-    (
-      data.updated ||
-      "Latest update"
-    ) +
-    (
-      runText
-        ? "  •  " + runText
-        : ""
-    );
+    "Run : " +
+    runDate +
+    " / " +
+    runHour;
+
+
+  // Make run information clear
+
+  time.style.fontWeight =
+    "600";
+
+
+  time.style.fontSize =
+    "14px";
+
+
+  time.style.color =
+    "#555";
+
+
+  time.style.whiteSpace =
+    "nowrap";
 }
 
 
@@ -1072,7 +1308,9 @@ function prepareGrid() {
   gridLookup =
     new Map();
 
+
   lats = [];
+
   lons = [];
 
 
@@ -1088,6 +1326,7 @@ function prepareGrid() {
   const latSet =
     new Set();
 
+
   const lonSet =
     new Set();
 
@@ -1096,22 +1335,38 @@ function prepareGrid() {
     point => {
 
       const lat =
-        Number(point.lat);
+        Number(
+          point.lat
+        );
+
 
       const lon =
-        Number(point.lon);
+        Number(
+          point.lon
+        );
 
 
       if (
-        !Number.isFinite(lat) ||
-        !Number.isFinite(lon)
+        !Number.isFinite(
+          lat
+        ) ||
+        !Number.isFinite(
+          lon
+        )
       ) {
+
         return;
       }
 
 
-      latSet.add(lat);
-      lonSet.add(lon);
+      latSet.add(
+        lat
+      );
+
+
+      lonSet.add(
+        lon
+      );
 
 
       const key =
@@ -1129,20 +1384,26 @@ function prepareGrid() {
 
 
   lats =
-    [...latSet].sort(
-      (a, b) => a - b
+    [
+      ...latSet
+    ].sort(
+      (a, b) =>
+        a - b
     );
 
 
   lons =
-    [...lonSet].sort(
-      (a, b) => a - b
+    [
+      ...lonSet
+    ].sort(
+      (a, b) =>
+        a - b
     );
 }
 
 
 // ============================================================
-// MODEL CONTROLS
+// MODEL CHECKBOXES
 // ============================================================
 
 document
@@ -1156,7 +1417,6 @@ document
         "change",
         drawRainfall
       );
-
     }
   );
 
@@ -1181,7 +1441,7 @@ if (periodControl) {
 
 
 // ============================================================
-// OPACITY
+// TRANSPARENCY CONTROL
 // ============================================================
 
 const opacityControl =
@@ -1192,7 +1452,9 @@ const opacityControl =
 
 if (opacityControl) {
 
-  // Moderate transparency
+  // Default:
+  // enough precipitation visibility
+  // while keeping map labels visible.
 
   opacityControl.value =
     "0.62";
@@ -1206,7 +1468,7 @@ if (opacityControl) {
 
 
 // ============================================================
-// LOAD DATA
+// LOAD DATA.JSON
 // ============================================================
 
 fetch(
@@ -1224,6 +1486,7 @@ fetch(
         );
       }
 
+
       return response.json();
     }
   )
@@ -1236,14 +1499,27 @@ fetch(
         json;
 
 
+      // Prepare source grid
+
       prepareGrid();
+
+
+      // Build rainfall legend
 
       buildLegend();
 
+
+      // Show model run
+
       updateHeader();
+
+
+      // Draw rainfall
 
       drawRainfall();
 
+
+      // Second render after Leaflet layout
 
       setTimeout(
         () => {
@@ -1283,7 +1559,7 @@ fetch(
 
 
 // ============================================================
-// RESIZE
+// WINDOW RESIZE
 // ============================================================
 
 window.addEventListener(
@@ -1291,8 +1567,8 @@ window.addEventListener(
   () => {
 
     if (rainLayer) {
+
       rainLayer.redraw();
     }
-
   }
 );
