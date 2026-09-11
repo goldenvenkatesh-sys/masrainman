@@ -69,3 +69,14 @@ section{min-width:0}
   display: block;
   margin-top: 5px;
 }
+
+/* Model run and valid-time panel */
+.run-details{margin:10px 0 12px;padding:9px 10px;border:1px solid #dbe3ec;border-radius:8px;background:#f7f9fc}
+.run-details-title{font-weight:700;font-size:13px;margin-bottom:7px;color:#17202a}
+.run-main{display:flex;justify-content:space-between;gap:8px;font-size:11px;line-height:1.5}
+.run-main span{color:#66717d}
+.run-main b{font-size:11px}
+.run-valid{font-size:11px;line-height:1.45;margin-top:2px;color:#234bbd;font-weight:700}
+.run-subtitle{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:#66717d;margin:7px 0 3px}
+.run-model-row{display:flex;justify-content:space-between;gap:6px;font-size:10px;line-height:1.55}
+.run-model-row b{font-weight:700}
