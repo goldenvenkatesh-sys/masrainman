@@ -1,4 +1,4 @@
-/* MasRainman — 24-hour Day 1..Day 12 rainfall map */
+/* MasRainman — Day 1..Day 12 rainfall + optional 850 hPa wind barbs */
 
 const INDIA_BOUNDS = L.latLngBounds(
   [6.0, 68.0],
@@ -26,12 +26,22 @@ const state = {
   map: null,
   canvas: null,
   ctx: null,
-  imageData: null,
   renderFrame: 0,
   opacity: 0.8,
   selectedDay: 0,
   selectedModels: new Set(["ECMWF HRES", "GEM", "GFS", "ICON"]),
+  windEnabled: false,
+  windSource: "blend",
 };
+
+// Deliberately sharp rainfall rendering:
+// - nearest 0.5° grid cell, not bilinear
+// - stepped colour levels, not continuous colour mixing
+// - no canvas upscaling/interpolation
+const RAIN_CELL_SAMPLING = "nearest";
+const RAIN_RENDER_STEP = 2;
+const WIND_GRID_SPACING_DEG = 2.0;
+const WIND_MIN_KNOTS = 3;
 
 function $(id) { return document.getElementById(id); }
 
@@ -48,15 +58,6 @@ function ensureUi() {
       opt.textContent = `Day ${i + 1}`;
       oldPeriod.appendChild(opt);
     }
-    oldPeriod.previousSibling && oldPeriod.previousSibling.nodeType === 3;
-    const label = oldPeriod.parentElement;
-    if (label) {
-      label.childNodes.forEach(n => {
-        if (n.nodeType === Node.TEXT_NODE && n.textContent.includes("6-hour")) {
-          n.textContent = "Forecast day";
-        }
-      });
-    }
   }
 
   const heading = document.querySelector("header h1");
@@ -64,7 +65,35 @@ function ensureUi() {
 
   const note = aside.querySelector(".note");
   if (note) {
-    note.innerHTML = "Rainfall is accumulated for each forecast day. ECMWF/GFS extend to Day 12; GEM to Day 10; ICON to Day 7.";
+    note.innerHTML =
+      "Rainfall is accumulated for each forecast day. " +
+      "Rainfall display uses sharp 0.5° nearest-grid sampling. " +
+      "850 hPa wind barbs use 12 UTC representative wind.";
+  }
+
+  // Create optional wind controls if they are not already in HTML.
+  if (!$('windControls')) {
+    const box = document.createElement("div");
+    box.id = "windControls";
+    box.innerHTML = `
+      <hr>
+      <label class="wind-toggle">
+        <input type="checkbox" id="wind850">
+        850 hPa Wind Barbs
+      </label>
+      <label id="windSourceWrap" style="display:none">
+        Wind source
+        <select id="windSource">
+          <option value="blend">Selected models — vector blend</option>
+          <option value="ECMWF HRES">ECMWF HRES</option>
+          <option value="GEM">GEM</option>
+          <option value="GFS">GFS</option>
+          <option value="ICON">ICON</option>
+        </select>
+      </label>
+      <div class="wind-note">850 hPa ≈ 1.5 km. Barbs show wind from direction; speed in knots.</div>
+    `;
+    aside.appendChild(box);
   }
 }
 
@@ -103,6 +132,24 @@ function setupControls() {
       if (state.canvas) state.canvas.style.opacity = String(state.opacity);
     });
   }
+
+  const wind = $("wind850");
+  if (wind) {
+    wind.addEventListener("change", () => {
+      state.windEnabled = wind.checked;
+      const wrap = $("windSourceWrap");
+      if (wrap) wrap.style.display = wind.checked ? "block" : "none";
+      drawRainfall();
+    });
+  }
+
+  const windSource = $("windSource");
+  if (windSource) {
+    windSource.addEventListener("change", () => {
+      state.windSource = windSource.value;
+      drawRainfall();
+    });
+  }
 }
 
 function getRunTimestamp() {
@@ -110,8 +157,6 @@ function getRunTimestamp() {
   const updated = new Date(state.data.updated);
   if (Number.isNaN(updated.getTime())) return null;
 
-  // The updater completes after a model run. Snap down to the latest
-  // completed 6-hour cycle so the header identifies the model run.
   const run = new Date(updated.getTime());
   run.setUTCMinutes(0, 0, 0);
   run.setUTCHours(Math.floor(run.getUTCHours() / 6) * 6);
@@ -176,7 +221,6 @@ function setupMap() {
   }).addTo(state.map);
 
   state.map.fitBounds(INDIA_BOUNDS, { padding: [18, 18] });
-
   state.map.on("zoomend moveend resize", scheduleRender);
 
   const map = document.getElementById("map");
@@ -191,83 +235,86 @@ function setupMap() {
 
 function colorAt(value) {
   if (!Number.isFinite(value) || value < 1) return null;
-  if (value >= levels[levels.length - 1]) return colors[colors.length - 1];
-
   let i = 0;
-  while (i < levels.length - 1 && value > levels[i + 1]) i++;
-  const a = levels[i];
-  const b = levels[i + 1];
-  const t = Math.max(0, Math.min(1, (value - a) / (b - a)));
-  return mixHex(colors[i], colors[i + 1], t);
-}
-
-function hexToRgb(hex) {
-  const h = hex.replace("#", "");
-  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
-}
-
-function mixHex(a, b, t) {
-  const ar = hexToRgb(a), br = hexToRgb(b);
-  return `rgb(${Math.round(ar[0] + (br[0]-ar[0])*t)},${Math.round(ar[1] + (br[1]-ar[1])*t)},${Math.round(ar[2] + (br[2]-ar[2])*t)})`;
+  while (i < levels.length - 1 && value >= levels[i + 1]) i++;
+  return colors[i];
 }
 
 function buildSourceGrid() {
   const grid = state.data.grid || [];
-  const rows = new Map();
   const cols = new Set();
+  const map = new Map();
   grid.forEach(p => {
     cols.add(p.lon);
-    if (!rows.has(p.lat)) rows.set(p.lat, []);
-    rows.get(p.lat).push(p);
+    map.set(`${p.lat}|${p.lon}`, p);
   });
-  const lats = [...rows.keys()].sort((a,b) => a-b);
+  const lats = [...new Set(grid.map(p => p.lat))].sort((a,b) => a-b);
   const lons = [...cols].sort((a,b) => a-b);
-  const map = new Map();
-  grid.forEach(p => map.set(`${p.lat}|${p.lon}`, p));
   return { lats, lons, map };
 }
 
-function interpolate(grid, lat, lon, model, dayIndex) {
+function nearestPoint(grid, lat, lon) {
   const { lats, lons, map } = grid;
   if (!lats.length || !lons.length) return null;
 
-  lat = Math.max(lats[0], Math.min(lats[lats.length - 1], lat));
-  lon = Math.max(lons[0], Math.min(lons[lons.length - 1], lon));
-
-  let j = Math.floor((lat - lats[0]) / (lats[1] - lats[0]));
-  let i = Math.floor((lon - lons[0]) / (lons[1] - lons[0]));
-  j = Math.max(0, Math.min(lats.length - 2, j));
-  i = Math.max(0, Math.min(lons.length - 2, i));
-
-  const lat0 = lats[j], lat1 = lats[j+1];
-  const lon0 = lons[i], lon1 = lons[i+1];
-  const fy = (lat - lat0) / (lat1 - lat0);
-  const fx = (lon - lon0) / (lon1 - lon0);
-
-  const pts = [
-    map.get(`${lat0}|${lon0}`), map.get(`${lat0}|${lon1}`),
-    map.get(`${lat1}|${lon0}`), map.get(`${lat1}|${lon1}`),
-  ];
-  const vals = pts.map(p => {
-    const v = p && p.models && p.models[model] ? p.models[model][dayIndex] : null;
-    return Number.isFinite(v) ? v : null;
-  });
-  const available = vals.filter(v => v !== null);
-  if (!available.length) return null;
-  if (available.length < 4) return available.reduce((a,b) => a+b,0) / available.length;
-
-  return vals[0]*(1-fx)*(1-fy) + vals[1]*fx*(1-fy) + vals[2]*(1-fx)*fy + vals[3]*fx*fy;
+  // The generated display grid is regular 0.5°, so calculate the
+  // nearest index directly instead of scanning the entire grid.
+  const latStep = lats.length > 1 ? (lats[1] - lats[0]) : 0.5;
+  const lonStep = lons.length > 1 ? (lons[1] - lons[0]) : 0.5;
+  const latIndex = Math.max(0, Math.min(lats.length - 1, Math.round((lat - lats[0]) / latStep)));
+  const lonIndex = Math.max(0, Math.min(lons.length - 1, Math.round((lon - lons[0]) / lonStep)));
+  return map.get(`${lats[latIndex]}|${lons[lonIndex]}`) || null;
 }
 
-function blendedValue(grid, lat, lon, dayIndex, models) {
-  const vals = models.map(model => interpolate(grid, lat, lon, model, dayIndex)).filter(v => Number.isFinite(v));
+function nearestRain(grid, lat, lon, model, dayIndex) {
+  const point = nearestPoint(grid, lat, lon);
+  const v = point && point.models && point.models[model]
+    ? point.models[model].rain[dayIndex]
+    : null;
+  return Number.isFinite(v) ? v : null;
+}
+
+function blendedRain(grid, lat, lon, dayIndex, models) {
+  const vals = models
+    .map(model => nearestRain(grid, lat, lon, model, dayIndex))
+    .filter(v => Number.isFinite(v));
   if (!vals.length) return null;
-  return vals.reduce((a,b) => a+b,0) / vals.length;
+  return vals.reduce((a,b) => a+b, 0) / vals.length;
+}
+
+function windAtPoint(grid, lat, lon, dayIndex, source) {
+  const point = nearestPoint(grid, lat, lon);
+  if (!point || !point.models) return null;
+
+  const models = source === "blend"
+    ? [...state.selectedModels]
+    : [source];
+
+  let sumU = 0;
+  let sumV = 0;
+  let count = 0;
+
+  models.forEach(model => {
+    const entry = point.models[model];
+    if (!entry || !Array.isArray(entry.wind850)) return;
+    const uv = entry.wind850[dayIndex];
+    if (!uv || !Number.isFinite(uv[0]) || !Number.isFinite(uv[1])) return;
+    sumU += uv[0];
+    sumV += uv[1];
+    count++;
+  });
+
+  if (!count) return null;
+  return {
+    u: sumU / count,
+    v: sumV / count,
+  };
 }
 
 function makeCanvas() {
   const mapEl = $("map");
   if (!mapEl) return;
+
   if (!state.canvas) {
     state.canvas = document.createElement("canvas");
     state.canvas.className = "rainfall-overlay";
@@ -305,50 +352,158 @@ function drawRainfall() {
   if (!models.length) return;
 
   const source = buildSourceGrid();
-  // Draw at the actual viewport resolution. Each screen pixel gets a
-  // bilinearly interpolated value from the 0.5° display grid. This means
-  // zooming never scales a tiny fixed raster and therefore avoids the
-  // old pixelated appearance.
-  const step = 2;
-  const image = ctx.createImageData(Math.ceil(w / step), Math.ceil(h / step));
-  const iw = image.width;
-  const ih = image.height;
+  const step = RAIN_RENDER_STEP;
+  const image = ctx.createImageData(w, h);
 
-  for (let py = 0; py < ih; py++) {
-    const y = py * step;
-    for (let px = 0; px < iw; px++) {
-      const x = px * step;
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
       const geo = state.map.containerPointToLatLng([x, y]);
       const lat = geo.lat;
       const lng = geo.lng;
-      if (lat < state.data.domain.lat_min || lat > state.data.domain.lat_max || lng < state.data.domain.lon_min || lng > state.data.domain.lon_max) continue;
+      if (
+        lat < state.data.domain.lat_min ||
+        lat > state.data.domain.lat_max ||
+        lng < state.data.domain.lon_min ||
+        lng > state.data.domain.lon_max
+      ) continue;
 
-      const value = blendedValue(source, lat, lng, state.selectedDay, models);
+      const value = blendedRain(source, lat, lng, state.selectedDay, models);
       const color = colorAt(value);
       if (!color) continue;
-      const [r,g,b] = hexToRgb(color.match(/#/) ? color : rgbToHex(color));
-      const alpha = Math.round(235);
-      const idx = (py * iw + px) * 4;
-      image.data[idx] = r;
-      image.data[idx+1] = g;
-      image.data[idx+2] = b;
-      image.data[idx+3] = alpha;
+
+      const [r,g,b] = hexToRgb(color);
+      for (let yy = y; yy < Math.min(y + step, h); yy++) {
+        for (let xx = x; xx < Math.min(x + step, w); xx++) {
+          const idx = (yy * w + xx) * 4;
+          image.data[idx] = r;
+          image.data[idx+1] = g;
+          image.data[idx+2] = b;
+          image.data[idx+3] = 235;
+        }
+      }
     }
   }
 
-  const temp = document.createElement("canvas");
-  temp.width = iw;
-  temp.height = ih;
-  temp.getContext("2d").putImageData(image, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(temp, 0, 0, w, h);
+  // Put the sharp rainfall field directly onto the canvas.
+  // No scaled low-resolution bitmap and no smoothing.
+  ctx.imageSmoothingEnabled = false;
+  ctx.putImageData(image, 0, 0);
+
+  if (state.windEnabled) {
+    drawWindBarbs(ctx, source, w, h);
+  }
 }
 
-function rgbToHex(rgb) {
-  const m = rgb.match(/\d+/g);
-  if (!m) return "#000000";
-  return "#" + m.slice(0,3).map(v => Number(v).toString(16).padStart(2,"0")).join("");
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0,2),16),
+    parseInt(h.slice(2,4),16),
+    parseInt(h.slice(4,6),16)
+  ];
+}
+
+function drawWindBarbs(ctx, grid, w, h) {
+  const bounds = state.data.domain;
+  const spacing = WIND_GRID_SPACING_DEG;
+
+  // Start on clean degree multiples so the barb field is stable while zooming.
+  const latStart = Math.ceil(bounds.lat_min / spacing) * spacing;
+  const lonStart = Math.ceil(bounds.lon_min / spacing) * spacing;
+
+  ctx.save();
+  ctx.strokeStyle = "#111";
+  ctx.fillStyle = "#111";
+  ctx.lineWidth = 1.3;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.font = "10px Arial";
+
+  for (let lat = latStart; lat <= bounds.lat_max; lat += spacing) {
+    for (let lon = lonStart; lon <= bounds.lon_max; lon += spacing) {
+      const point = state.map.latLngToContainerPoint([lat, lon]);
+      if (point.x < -30 || point.x > w + 30 || point.y < -30 || point.y > h + 30) continue;
+
+      const wind = windAtPoint(grid, lat, lon, state.selectedDay, state.windSource);
+      if (!wind) continue;
+
+      const knots = Math.sqrt(wind.u * wind.u + wind.v * wind.v) * 1.943844;
+      if (!Number.isFinite(knots) || knots < WIND_MIN_KNOTS) continue;
+
+      drawOneBarb(ctx, point.x, point.y, wind.u, wind.v, knots);
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawOneBarb(ctx, x, y, u, v, knots) {
+  // Meteorological wind direction is FROM. The U/V vector is TOWARD.
+  // Screen coordinates: east = +x, north = -y.
+  const mag = Math.sqrt(u*u + v*v) || 1;
+  const fromX = -u / mag;
+  const fromY = v / mag;
+
+  const length = 23;
+  const ex = x + fromX * length;
+  const ey = y + fromY * length;
+
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+
+  let remaining = Math.round(knots / 5) * 5;
+  let pos = 0;
+  const barbSpacing = 5.5;
+  const feather = 9;
+  const angle = Math.atan2(fromY, fromX);
+  const backX = -Math.cos(angle);
+  const backY = -Math.sin(angle);
+  const sideX = -Math.sin(angle);
+  const sideY = Math.cos(angle);
+
+  // Draw 50 kt pennants first, then 10 kt, then 5 kt.
+  const fifties = Math.floor(remaining / 50);
+  remaining -= fifties * 50;
+  const tens = Math.floor(remaining / 10);
+  remaining -= tens * 10;
+  const fives = Math.floor(remaining / 5);
+
+  for (let i = 0; i < fifties; i++) {
+    const bx = ex + backX * pos;
+    const by = ey + backY * pos;
+    const tipX = bx + backX * 10;
+    const tipY = by + backY * 10;
+    const outerX = bx + sideX * 7;
+    const outerY = by + sideY * 7;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(tipX, tipY);
+    ctx.lineTo(outerX, outerY);
+    ctx.closePath();
+    ctx.fill();
+    pos += barbSpacing;
+  }
+
+  for (let i = 0; i < tens; i++) {
+    const bx = ex + backX * pos;
+    const by = ey + backY * pos;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + sideX * feather + backX * 7, by + sideY * feather + backY * 7);
+    ctx.stroke();
+    pos += barbSpacing;
+  }
+
+  if (fives) {
+    const bx = ex + backX * pos;
+    const by = ey + backY * pos;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + sideX * feather * 0.65 + backX * 7, by + sideY * feather * 0.65 + backY * 7);
+    ctx.stroke();
+  }
 }
 
 function scheduleRender() {
@@ -359,8 +514,11 @@ function scheduleRender() {
 function buildLegend() {
   const legend = $("legend");
   if (!legend) return;
-  legend.innerHTML = `<div class="legend-title">24-hour rainfall (mm)</div>` +
-    levels.map((v,i) => `<span class="legend-item"><i style="background:${colors[i]}"></i>${v}</span>`).join("");
+  legend.innerHTML =
+    `<div class="legend-title">24-hour rainfall (mm) — stepped display</div>` +
+    levels.map((v,i) =>
+      `<span class="legend-item"><i style="background:${colors[i]}"></i>${v}</span>`
+    ).join("");
 }
 
 async function loadData() {
