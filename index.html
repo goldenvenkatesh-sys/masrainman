@@ -17,6 +17,10 @@
       <label><input type="checkbox" class="model" value="GFS" checked> GFS</label>
       <label><input type="checkbox" class="model" value="ICON" checked> ICON</label>
       <hr>
+      <div class="aifs-heading">AIFS Set</div>
+      <label><input type="radio" name="rainSet" value="standard" checked> Standard model blend</label>
+      <label><input type="radio" name="rainSet" value="aifs"> AIFS Set — independent</label>
+      <label id="aifsModelWrap" style="display:none">AIFS model<select id="aifsModel"></select></label>
       <label>Forecast day<select id="period"></select></label>
       <label>Transparency <input id="opacity" type="range" min="0.2" max="1" step="0.05" value="0.8"></label>
       <p class="note">Rainfall is accumulated for each forecast day. Source: Open-Meteo model-specific APIs.</p>
@@ -24,6 +28,6 @@
     <section><div id="map"></div><div id="legend"></div></section>
   </main>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>
