@@ -1,6 +1,7 @@
 // ============================================================
 // MASRAINMAN
 // FAST + SHARP + MODERATELY SMOOTH 6-HOURLY RAINFALL MAP
+// VERSION 5
 // ============================================================
 
 
@@ -61,7 +62,7 @@ const map = L.map("map", {
 });
 
 
-// India + surrounding sea
+// India + surrounding region
 
 map.fitBounds(
   [
@@ -152,7 +153,7 @@ function getSelectedModels() {
 
 
 // ============================================================
-// GET GRID POINT
+// GRID POINT LOOKUP
 // ============================================================
 
 function getPoint(
@@ -166,6 +167,7 @@ function getPoint(
     latIndex >= lats.length ||
     lonIndex >= lons.length
   ) {
+
     return null;
   }
 
@@ -184,7 +186,7 @@ function getPoint(
 
 
 // ============================================================
-// BINARY SEARCH — GRID INDEX
+// BINARY SEARCH
 // ============================================================
 
 function lowerIndex(
@@ -195,6 +197,7 @@ function lowerIndex(
   if (
     value <= array[0]
   ) {
+
     return 0;
   }
 
@@ -203,6 +206,7 @@ function lowerIndex(
     value >=
     array[array.length - 1]
   ) {
+
     return array.length - 2;
   }
 
@@ -247,7 +251,7 @@ function lowerIndex(
 
 
 // ============================================================
-// BUILD SELECTED MODEL FIELD
+// BUILD MODEL MEAN FIELD
 // ============================================================
 
 function buildField(
@@ -318,7 +322,9 @@ function buildField(
       );
 
 
-      if (!values.length) {
+      if (
+        !values.length
+      ) {
 
         row.push(null);
 
@@ -347,10 +353,10 @@ function buildField(
 // BILINEAR INTERPOLATION
 // ============================================================
 //
-// Important:
-// No additional blur is applied.
-// This only interpolates between the existing
-// 0.5° source/display grid points.
+// This removes the hard 0.5° block appearance.
+//
+// No blur is used.
+// No smooth-step is used.
 // ============================================================
 
 function interpolate(
@@ -398,40 +404,32 @@ function interpolate(
     lons[xi + 1];
 
 
-  let fx =
-    (
-      lon - x0
-    ) /
-    (
-      x1 - x0
-    );
-
-
-  let fy =
-    (
-      lat - y0
-    ) /
-    (
-      y1 - y0
-    );
-
-
-  fx =
+  const fx =
     Math.max(
       0,
       Math.min(
         1,
-        fx
+        (
+          lon - x0
+        ) /
+        (
+          x1 - x0
+        )
       )
     );
 
 
-  fy =
+  const fy =
     Math.max(
       0,
       Math.min(
         1,
-        fy
+        (
+          lat - y0
+        ) /
+        (
+          y1 - y0
+        )
       )
     );
 
@@ -453,7 +451,7 @@ function interpolate(
 
 
   // ----------------------------------------------------------
-  // Missing-data fallback
+  // MISSING DATA FALLBACK
   // ----------------------------------------------------------
 
   if (
@@ -474,7 +472,10 @@ function interpolate(
     );
 
 
-    if (!values.length) {
+    if (
+      !values.length
+    ) {
+
       return null;
     }
 
@@ -490,11 +491,7 @@ function interpolate(
 
 
   // ----------------------------------------------------------
-  // LINEAR BILINEAR INTERPOLATION
-  // ----------------------------------------------------------
-  //
-  // Deliberately NOT using smooth-step.
-  // This keeps rainfall features sharper.
+  // STANDARD BILINEAR INTERPOLATION
   // ----------------------------------------------------------
 
   const top =
@@ -518,8 +515,11 @@ function interpolate(
 // RAINFALL COLOUR
 // ============================================================
 //
-// Continuous colour transition between MasRainman
-// rainfall thresholds.
+// IMPORTANT:
+//
+// < 1 mm / 6h = TRANSPARENT
+//
+// This removes the very light 0.1–1 mm wash from the map.
 // ============================================================
 
 function rainfallColor(
@@ -528,7 +528,7 @@ function rainfallColor(
 
   if (
     !Number.isFinite(value) ||
-    value < levels[0]
+    value < 1
   ) {
 
     return null;
@@ -586,6 +586,9 @@ function rainfallColor(
       )
     );
 
+
+  // Linear colour interpolation.
+  // No additional smoothing.
 
   const c1 =
     rgbColors[i];
@@ -801,13 +804,16 @@ const RainLayer =
         getSelectedModels();
 
 
-      if (!models.length) {
+      if (
+        !models.length
+      ) {
+
         return;
       }
 
 
       // ------------------------------------------------------
-      // BUILD MODEL MEAN FIELD
+      // BUILD MODEL FIELD
       // ------------------------------------------------------
 
       const field =
@@ -818,11 +824,11 @@ const RainLayer =
 
 
       // ------------------------------------------------------
-      // DISPLAY FIELD SIZE
+      // DISPLAY RESOLUTION
       // ------------------------------------------------------
       //
-      // 330 x 198 gives much more detail than the previous
-      // 220 x 132 version while remaining fast.
+      // Higher than the previous version,
+      // but still much faster than full pixel rendering.
       // ------------------------------------------------------
 
       const FW = 330;
@@ -874,7 +880,7 @@ const RainLayer =
 
 
       // ------------------------------------------------------
-      // RENDER SMALL METEOROLOGICAL FIELD
+      // RENDER
       // ------------------------------------------------------
 
       for (
@@ -891,7 +897,7 @@ const RainLayer =
           height;
 
 
-        // One Leaflet conversion per row.
+        // One Leaflet geographic conversion per row.
 
         const rowLat =
           this._map
@@ -932,9 +938,13 @@ const RainLayer =
             );
 
 
+          // --------------------------------------------------
+          // BELOW 1 MM = TRANSPARENT
+          // --------------------------------------------------
+
           if (
             value === null ||
-            value < levels[0]
+            value < 1
           ) {
 
             continue;
@@ -992,7 +1002,8 @@ const RainLayer =
       // ------------------------------------------------------
       //
       // No blur.
-      // Only normal browser interpolation.
+      // No filter.
+      // Only browser image interpolation.
       // ------------------------------------------------------
 
       ctx.save();
@@ -1108,17 +1119,14 @@ function buildLegend() {
 
 
 // ============================================================
-// MODEL RUN
+// RUN HOUR
 // ============================================================
 //
-// The current data.json stores the update timestamp.
-// We derive the 6-hour model cycle from that timestamp.
-//
-// Example:
-// 05:04 UTC → 00Z
-// 08:10 UTC → 06Z
-// 14:20 UTC → 12Z
-// 20:30 UTC → 18Z
+// Model cycles:
+// 00Z
+// 06Z
+// 12Z
+// 18Z
 // ============================================================
 
 function getRunHour(
@@ -1156,17 +1164,20 @@ function getRunHour(
     ) * 6;
 
 
-  return String(
-    runHour
-  ).padStart(
-    2,
-    "0"
-  ) + "Z";
+  return (
+    String(
+      runHour
+    ).padStart(
+      2,
+      "0"
+    ) +
+    "Z"
+  );
 }
 
 
 // ============================================================
-// FORMAT RUN DATE
+// RUN DATE
 // ============================================================
 
 function formatRunDate(
@@ -1228,7 +1239,7 @@ function formatRunDate(
 
 
 // ============================================================
-// UPDATE TOP-RIGHT RUN DISPLAY
+// TOP RIGHT RUN DISPLAY
 // ============================================================
 
 function updateHeader() {
@@ -1280,8 +1291,6 @@ function updateHeader() {
     runHour;
 
 
-  // Make run information clear
-
   time.style.fontWeight =
     "600";
 
@@ -1318,7 +1327,10 @@ function prepareGrid() {
     data.grid || [];
 
 
-  if (!grid.length) {
+  if (
+    !grid.length
+  ) {
+
     return;
   }
 
@@ -1403,7 +1415,7 @@ function prepareGrid() {
 
 
 // ============================================================
-// MODEL CHECKBOXES
+// MODEL CHECKBOX EVENTS
 // ============================================================
 
 document
@@ -1417,12 +1429,13 @@ document
         "change",
         drawRainfall
       );
+
     }
   );
 
 
 // ============================================================
-// PERIOD CONTROL
+// PERIOD EVENT
 // ============================================================
 
 const periodControl =
@@ -1431,7 +1444,9 @@ const periodControl =
   );
 
 
-if (periodControl) {
+if (
+  periodControl
+) {
 
   periodControl.addEventListener(
     "change",
@@ -1441,7 +1456,7 @@ if (periodControl) {
 
 
 // ============================================================
-// TRANSPARENCY CONTROL
+// TRANSPARENCY
 // ============================================================
 
 const opacityControl =
@@ -1450,11 +1465,11 @@ const opacityControl =
   );
 
 
-if (opacityControl) {
+if (
+  opacityControl
+) {
 
-  // Default:
-  // enough precipitation visibility
-  // while keeping map labels visible.
+  // Default opacity
 
   opacityControl.value =
     "0.62";
@@ -1468,7 +1483,7 @@ if (opacityControl) {
 
 
 // ============================================================
-// LOAD DATA.JSON
+// LOAD DATA
 // ============================================================
 
 fetch(
@@ -1479,7 +1494,9 @@ fetch(
   .then(
     response => {
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
 
         throw new Error(
           "Unable to load data.json"
@@ -1499,27 +1516,19 @@ fetch(
         json;
 
 
-      // Prepare source grid
-
       prepareGrid();
 
-
-      // Build rainfall legend
 
       buildLegend();
 
 
-      // Show model run
-
       updateHeader();
 
-
-      // Draw rainfall
 
       drawRainfall();
 
 
-      // Second render after Leaflet layout
+      // Second render after map layout
 
       setTimeout(
         () => {
@@ -1549,7 +1558,9 @@ fetch(
         );
 
 
-      if (time) {
+      if (
+        time
+      ) {
 
         time.textContent =
           "Rainfall data unavailable";
@@ -1566,7 +1577,9 @@ window.addEventListener(
   "resize",
   () => {
 
-    if (rainLayer) {
+    if (
+      rainLayer
+    ) {
 
       rainLayer.redraw();
     }
