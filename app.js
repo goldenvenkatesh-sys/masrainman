@@ -32,6 +32,8 @@ const state = {
   selectedModels: new Set(["ECMWF HRES", "GEM", "GFS", "ICON"]),
   windEnabled: false,
   windSource: "blend",
+  hoverRaf: 0,
+  hoverPoint: null,
 };
 
 // Balanced rainfall rendering:
@@ -222,6 +224,7 @@ function setupMap() {
 
   state.map.fitBounds(INDIA_BOUNDS, { padding: [18, 18] });
   state.map.on("zoomend moveend resize", scheduleRender);
+  setupRainfallHover();
 
   const map = document.getElementById("map");
   if (map) {
@@ -235,9 +238,22 @@ function setupMap() {
 
 function colorAt(value) {
   if (!Number.isFinite(value) || value < 1) return null;
+
+  // Bilinear rainfall values are continuous. Keep the published rainfall
+  // thresholds, but blend only between adjacent threshold colours so the
+  // field does not turn into visible square blocks at the 0.5° grid scale.
+  if (value >= levels[levels.length - 1]) return colors[colors.length - 1];
+
   let i = 0;
-  while (i < levels.length - 1 && value >= levels[i + 1]) i++;
-  return colors[i];
+  while (i < levels.length - 2 && value >= levels[i + 1]) i++;
+
+  const lo = levels[i];
+  const hi = levels[i + 1];
+  const t = hi > lo ? (value - lo) / (hi - lo) : 0;
+  const a = hexToRgb(colors[i]);
+  const b = hexToRgb(colors[i + 1]);
+
+  return `#${[0,1,2].map(k => Math.round(a[k] + (b[k] - a[k]) * t).toString(16).padStart(2, "0")).join("")}`;
 }
 
 function buildSourceGrid() {
@@ -350,6 +366,116 @@ function windAtPoint(grid, lat, lon, dayIndex, source) {
     u: sumU / count,
     v: sumV / count,
   };
+}
+
+
+function setupRainfallHover() {
+  const mapEl = $("map");
+  if (!mapEl || state.map._rainHoverReady) return;
+  state.map._rainHoverReady = true;
+
+  let tooltip = $("rainTooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.id = "rainTooltip";
+    tooltip.className = "rain-tooltip";
+    tooltip.style.display = "none";
+    mapEl.appendChild(tooltip);
+  }
+
+  mapEl.addEventListener("mousemove", (e) => {
+    state.hoverPoint = { x: e.offsetX, y: e.offsetY };
+    if (state.hoverRaf) return;
+    state.hoverRaf = requestAnimationFrame(() => {
+      state.hoverRaf = 0;
+      updateRainfallHover();
+    });
+  });
+
+  mapEl.addEventListener("mouseleave", () => {
+    state.hoverPoint = null;
+    tooltip.style.display = "none";
+  });
+}
+
+function updateRainfallHover() {
+  const tooltip = $("rainTooltip");
+  if (!tooltip || !state.hoverPoint || !state.data || !state.map) return;
+
+  const { x, y } = state.hoverPoint;
+  const geo = state.map.containerPointToLatLng([x, y]);
+  const lat = geo.lat;
+  const lon = geo.lng;
+
+  if (
+    lat < state.data.domain.lat_min || lat > state.data.domain.lat_max ||
+    lon < state.data.domain.lon_min || lon > state.data.domain.lon_max
+  ) {
+    tooltip.style.display = "none";
+    return;
+  }
+
+  const models = [...state.selectedModels];
+  if (!models.length) {
+    tooltip.style.display = "none";
+    return;
+  }
+
+  const grid = buildSourceGrid();
+  const values = models
+    .map(model => ({
+      model,
+      value: bilinearRain(grid, lat, lon, model, state.selectedDay),
+    }))
+    .filter(item => Number.isFinite(item.value));
+
+  if (!values.length) {
+    tooltip.style.display = "none";
+    return;
+  }
+
+  const blend = values.reduce((sum, item) => sum + item.value, 0) / values.length;
+  const modelLines = values.map(item =>
+    `<div><span>${escapeHtml(item.model)}</span><b>${item.value.toFixed(1)} mm</b></div>`
+  ).join("");
+
+  tooltip.innerHTML =
+    `<div class="rain-tooltip-title">Rainfall — Day ${state.selectedDay + 1}</div>` +
+    `<div class="rain-tooltip-main"><b>${blend.toFixed(1)} mm</b><span>selected-model blend</span></div>` +
+    modelLines +
+    `<small>${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E</small>`;
+
+  const mapWidth = mapElWidth();
+  const mapHeight = mapElHeight();
+  const tw = tooltip.offsetWidth || 190;
+  const th = tooltip.offsetHeight || 110;
+  const gap = 14;
+  let left = x + gap;
+  let top = y + gap;
+  if (left + tw > mapWidth - 6) left = x - tw - gap;
+  if (top + th > mapHeight - 6) top = y - th - gap;
+  left = Math.max(6, Math.min(left, mapWidth - tw - 6));
+  top = Math.max(6, Math.min(top, mapHeight - th - 6));
+
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+  tooltip.style.display = "block";
+}
+
+function mapElWidth() {
+  const el = $("map");
+  return el ? el.clientWidth : 0;
+}
+
+function mapElHeight() {
+  const el = $("map");
+  return el ? el.clientHeight : 0;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>'"]/g, ch => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+  }[ch]));
 }
 
 function makeCanvas() {
