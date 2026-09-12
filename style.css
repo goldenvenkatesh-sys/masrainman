@@ -16,10 +16,6 @@ aside hr{border:0;border-top:1px solid #e1e6ec;margin:14px 0}
 section{min-width:0}
 #map{height:760px;min-height:500px;position:relative;overflow:hidden;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.15);background:#dce7f2}
 .rainfall-overlay{position:absolute!important;pointer-events:none!important}
-#legend{background:#fff;margin-top:8px;border-radius:8px;padding:9px;box-shadow:0 1px 5px rgba(0,0,0,.1);font-size:11px;line-height:1.8}
-.legend-title{font-weight:700;margin-bottom:3px}
-.legend-item{display:inline-flex;align-items:center;margin-right:8px;white-space:nowrap}
-.legend-item i{display:inline-block;width:14px;height:10px;margin-right:3px;border:1px solid rgba(0,0,0,.12)}
 @media(max-width:800px){main{grid-template-columns:1fr}#map{height:650px;min-height:420px}}
 .wind-toggle{font-weight:700}
 .wind-note{font-size:10px;line-height:1.4;color:#66717d;margin-top:5px}
@@ -86,13 +82,80 @@ section{min-width:0}
 #aifsModelWrap{font-size:12px}
 #aifsModelWrap select{font-size:12px}
 
-/* Target-map legend: compact horizontal radar-style scale */
-#legend{font-size:11px}
-.legend-title{margin-bottom:6px}
-.legend-scale{display:flex;flex-wrap:wrap;align-items:center;gap:3px 7px}
-.legend-item{margin-right:0}
-.legend-item i{width:18px;height:10px;border:0;border-radius:0}
 
+
+
+/* Reference-style filled-contour rainfall legend */
+section {
+  position: relative;
+}
+
+#legend {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 700;
+  width: 112px;
+  max-height: calc(100% - 28px);
+  overflow: hidden;
+  padding: 10px 9px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 2px 9px rgba(0,0,0,.18);
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.legend-title {
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 3px;
+}
+
+.legend-source {
+  font-size: 9px;
+  color: #66717d;
+  text-align: center;
+  margin-bottom: 7px;
+}
+
+.legend-bar {
+  border: 1px solid #222;
+}
+
+.legend-row {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  align-items: center;
+  min-height: 15px;
+}
+
+.legend-row i {
+  display: block;
+  height: 15px;
+  border-right: 1px solid rgba(0,0,0,.25);
+}
+
+.legend-row span {
+  padding-left: 5px;
+  font-size: 10px;
+  color: #18212b;
+}
+
+@media(max-width:800px) {
+  #legend {
+    top: auto;
+    right: 8px;
+    bottom: 8px;
+    width: 92px;
+    max-height: 58%;
+  }
+  .legend-title { font-size: 12px; }
+  .legend-row { grid-template-columns: 30px 1fr; min-height: 12px; }
+  .legend-row i { height: 12px; }
+  .legend-row span { font-size: 9px; }
+}
 
 /* Reference-style map framing */
 .leaflet-container{background:#d8edf7}
