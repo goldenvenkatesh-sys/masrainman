@@ -413,7 +413,11 @@ async function addReferenceBoundaries() {
 function colorAt(value) {
   if (!Number.isFinite(value) || value < levels[0]) return null;
 
-  let idx = 0;
+  // Keep very light rainfall below 1 mm essentially white, as in the
+  // reference plot. The first visible coloured band starts at 1 mm.
+  if (value < 1) return "#ffffff";
+
+  let idx = 3; // 1 mm band
   while (idx < levels.length - 1 && value >= levels[idx + 1]) idx++;
   return colors[idx];
 }
