@@ -712,7 +712,7 @@ function makeCanvas() {
   state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-// ULTRA-FAST, SMOOTH RENDERING (LAG-FREE OPTIMIZED STEP 0.05 WITH NO HEAVY BLUR FILTER)
+// ADAPTIVE PERFORMANCE RENDERING: Instant load on startup, high-detail when zoomed in
 function drawRainfall() {
   if (!state.data || !state.map) return;
   makeCanvas();
@@ -732,8 +732,15 @@ function drawRainfall() {
   const halfLat = latStep / 2;
   const halfLon = lonStep / 2;
 
-  // Optimized step for buttery-smooth panning performance without CPU lag
-  const displayStep = 0.05; 
+  // Automatically adjust resolution based on zoom level to ensure zero startup lag
+  const zoom = state.map.getZoom();
+  let displayStep = 0.125; // Coarse & lightning-fast when viewing full Pan-India on startup
+  if (zoom >= 7) {
+    displayStep = 0.035;   // High-detail smooth curves when zoomed into state level
+  } else if (zoom === 6) {
+    displayStep = 0.06;    // Medium detail
+  }
+
   const subRows = Math.max(1, Math.round(latStep / displayStep));
   const subCols = Math.max(1, Math.round(lonStep / displayStep));
   const cellLat = latStep / subRows;
@@ -742,7 +749,7 @@ function drawRainfall() {
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, state.opacity));
   ctx.imageSmoothingEnabled = true;
-  ctx.filter = "none"; // Removed heavy blur filter to guarantee zero lag
+  ctx.filter = "none";
 
   source.points.forEach(point => {
     const lat = Number(point.lat);
@@ -791,7 +798,6 @@ function drawRainfall() {
         if (!color) continue;
 
         ctx.fillStyle = color;
-        // Slight box overlap to eliminate grid lines without performance overhead
         ctx.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(subPxW) + 1.2, Math.ceil(subPxH) + 1.2);
       }
     }
