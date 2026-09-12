@@ -319,30 +319,15 @@ function setupMap() {
   state.map.createPane("referenceBoundaries");
   state.map.getPane("referenceBoundaries").style.zIndex = 650;
 
-  // Use the known-working CARTO Voyager basemap. It gives the reference
-  // weather-map look while remaining reliable in the embedded Blogger page.
-  const base = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+  // Use the public OpenStreetMap raster tiles as the reliable basemap.
+  // CARTO's raster endpoint can now return an API-key-required layer in
+  // embedded pages, which was causing the visible "API KEY REQUIRED"
+  // watermark. OSM keeps the India/Sri Lanka geography and place labels
+  // while the rainfall canvas remains visually on top.
+  const base = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
-    subdomains: "abcd",
-    attribution: "© OpenStreetMap contributors © CARTO",
-  }).addTo(state.map);
-
-  // Keep a standard OSM fallback underneath so a CARTO tile outage cannot
-  // leave the entire map blank. Voyager remains the visible layer normally.
-  const fallback = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    opacity: 0,
     attribution: "© OpenStreetMap contributors",
   }).addTo(state.map);
-  let cartoLoaded = false;
-  base.once("load", () => {
-    cartoLoaded = true;
-    fallback.setOpacity(0);
-  });
-  const fallbackTimer = window.setTimeout(() => {
-    if (!cartoLoaded) fallback.setOpacity(1);
-  }, 3500);
-  base.once("load", () => window.clearTimeout(fallbackTimer));
 
   // Keep India + Sri Lanka boundaries visible above the rainfall raster.
   // The state layer gives the reference-style internal India boundaries;
