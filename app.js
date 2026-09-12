@@ -1,9 +1,9 @@
 /* MasRainman — Day 1..Day 12 rainfall + optional 850 hPa wind barbs */
 
-// Pan India geographic bounds
+// Tightly framed India bounds matching your preferred zoom level
 const INDIA_BOUNDS = L.latLngBounds(
-  [6.5, 68.0],
-  [37.5, 97.5]
+  [7.0, 68.5],
+  [35.5, 92.5]
 );
 
 const levels = [
@@ -333,7 +333,7 @@ function setupMap() {
 
   addReferenceBoundaries();
   
-  // Robust initial fit bounds for Pan India framing
+  // Fit to the tighter India zoom level on load
   state.map.fitBounds(INDIA_BOUNDS, { padding: [10, 10], animate: false });
   
   state.map.on("movestart", () => {
