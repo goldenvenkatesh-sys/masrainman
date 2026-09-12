@@ -114,7 +114,7 @@ function ensureUi() {
   if (note) {
     note.innerHTML =
       "Rainfall is accumulated for each forecast day. " +
-      "Rainfall display uses dynamic bilinear sampling. " +
+      "Rainfall display uses smooth bilinear sampling. " +
       "850 hPa wind barbs use 12 UTC representative wind.";
   }
 
@@ -334,7 +334,6 @@ function setupMap() {
   addReferenceBoundaries();
   state.map.fitBounds(INDIA_BOUNDS, { padding: [8, 8] });
   
-  // FIX: Kinetic Pan and Zoom Animation Handlers
   state.map.on("movestart", () => {
     panStartPoint = state.map.getPixelBounds().min;
   });
@@ -344,12 +343,10 @@ function setupMap() {
     const current = state.map.getPixelBounds().min;
     const x = panStartPoint.x - current.x;
     const y = panStartPoint.y - current.y;
-    // Visually drag the canvas along with the map to prevent "zig zag"
     state.canvas.style.transform = `translate(${x}px, ${y}px)`;
   });
 
   state.map.on("zoomstart", () => {
-    // Hide smoothly during zoom scale animations
     if (state.canvas) state.canvas.style.opacity = "0";
   });
 
@@ -700,7 +697,6 @@ function makeCanvas() {
     state.canvas.style.pointerEvents = "none";
     state.canvas.style.zIndex = "450";
     state.canvas.style.opacity = String(state.opacity);
-    // Smooth transition when hiding the canvas during a zoom jump
     state.canvas.style.transition = "opacity 0.15s ease";
     mapEl.appendChild(state.canvas);
   }
@@ -716,7 +712,7 @@ function makeCanvas() {
   state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-// FULL FIX: Dynamic Level-of-Detail Rendering
+// RESTORED HIGH-SMOOTHNESS UNIFORM STEP (0.035) WITH BLEND FILTER FOR SOFTNESS
 function drawRainfall() {
   if (!state.data || !state.map) return;
   makeCanvas();
@@ -736,18 +732,8 @@ function drawRainfall() {
   const halfLat = latStep / 2;
   const halfLon = lonStep / 2;
 
-  // FIX 1: Adjust grid resolution dynamically based on zoom level to prevent lag
-  const zoom = state.map.getZoom();
-  let dynamicStep = 0.125;
-  if (zoom >= 7) {
-    dynamicStep = 0.025; // Super high-res for zoomed-in state
-  } else if (zoom === 6) {
-    dynamicStep = 0.05;  // Medium-res 
-  } else {
-    dynamicStep = 0.125; // Standard-res for Pan-India view (prevents 20s lag)
-  }
-
-  const displayStep = Math.min(dynamicStep, latStep, lonStep);
+  // Universal smooth step backed by viewport culling so it stays fast without lag
+  const displayStep = 0.035; 
   const subRows = Math.max(1, Math.round(latStep / displayStep));
   const subCols = Math.max(1, Math.round(lonStep / displayStep));
   const cellLat = latStep / subRows;
@@ -755,8 +741,9 @@ function drawRainfall() {
 
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, state.opacity));
-  ctx.imageSmoothingEnabled = false;
-  ctx.filter = "none";
+  ctx.imageSmoothingEnabled = true;
+  // Subtle canvas filter blur to blend color steps into organic softness
+  ctx.filter = "blur(0.4px)";
 
   source.points.forEach(point => {
     const lat = Number(point.lat);
@@ -771,7 +758,7 @@ function drawRainfall() {
     const cellNW = state.map.latLngToContainerPoint([cellNorth, cellWest]);
     const cellSE = state.map.latLngToContainerPoint([cellSouth, cellEast]);
 
-    // FIX 2: Fast Viewport Culling - Ignore grid blocks completely off-screen
+    // Fast Viewport Culling - skips off-screen rendering entirely
     if (
       Math.max(cellNW.x, cellSE.x) < -20 || 
       Math.min(cellNW.x, cellSE.x) > w + 20 ||
@@ -805,7 +792,7 @@ function drawRainfall() {
         if (!color) continue;
 
         ctx.fillStyle = color;
-        ctx.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(subPxW) + 1, Math.ceil(subPxH) + 1);
+        ctx.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(subPxW) + 1.5, Math.ceil(subPxH) + 1.5);
       }
     }
   });
