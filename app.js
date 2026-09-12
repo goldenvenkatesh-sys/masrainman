@@ -712,7 +712,7 @@ function makeCanvas() {
   state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-// RESTORED HIGH-SMOOTHNESS UNIFORM STEP (0.035) WITH BLEND FILTER FOR SOFTNESS
+// ULTRA-SOFT BLENDING WITH INCREASED BLUR TO REMOVE GRAIN TEXTURE
 function drawRainfall() {
   if (!state.data || !state.map) return;
   makeCanvas();
@@ -732,7 +732,6 @@ function drawRainfall() {
   const halfLat = latStep / 2;
   const halfLon = lonStep / 2;
 
-  // Universal smooth step backed by viewport culling so it stays fast without lag
   const displayStep = 0.035; 
   const subRows = Math.max(1, Math.round(latStep / displayStep));
   const subCols = Math.max(1, Math.round(lonStep / displayStep));
@@ -742,8 +741,8 @@ function drawRainfall() {
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, state.opacity));
   ctx.imageSmoothingEnabled = true;
-  // Subtle canvas filter blur to blend color steps into organic softness
-  ctx.filter = "blur(0.4px)";
+  // INCREASED BLUR TO 1.3px TO COMPLETELY ELIMINATE GRAIN TEXTURE
+  ctx.filter = "blur(1.3px)";
 
   source.points.forEach(point => {
     const lat = Number(point.lat);
@@ -758,7 +757,6 @@ function drawRainfall() {
     const cellNW = state.map.latLngToContainerPoint([cellNorth, cellWest]);
     const cellSE = state.map.latLngToContainerPoint([cellSouth, cellEast]);
 
-    // Fast Viewport Culling - skips off-screen rendering entirely
     if (
       Math.max(cellNW.x, cellSE.x) < -20 || 
       Math.min(cellNW.x, cellSE.x) > w + 20 ||
@@ -792,7 +790,8 @@ function drawRainfall() {
         if (!color) continue;
 
         ctx.fillStyle = color;
-        ctx.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(subPxW) + 1.5, Math.ceil(subPxH) + 1.5);
+        // Added +2px overlap to permanently seal any sub-pixel mesh lines
+        ctx.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(subPxW) + 2, Math.ceil(subPxH) + 2);
       }
     }
   });
