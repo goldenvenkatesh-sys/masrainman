@@ -1,8 +1,10 @@
 /* MasRainman — Day 1..Day 12 rainfall + optional 850 hPa wind barbs */
 
+// Default India-centered view. Keep the full Indian peninsula and Sri Lanka
+// visible while retaining enough north/east context for the reference layout.
 const INDIA_BOUNDS = L.latLngBounds(
-  [6.0, 68.0],
-  [37.5, 97.5]
+  [5.5, 68.0],
+  [36.5, 97.5]
 );
 
 const levels = [
@@ -309,16 +311,23 @@ function setupMap() {
     maxZoom: 10,
     worldCopyJump: false,
   });
+  state.map.createPane("referenceBoundaries");
+  state.map.getPane("referenceBoundaries").style.zIndex = 650;
 
-  // Light CARTO Voyager basemap closely matches the target reference:
-  // pale land, light-blue water, subtle roads and clear place labels.
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+  // Use CARTO Positron for the cleaner weather-map look in the reference:
+  // pale land, soft blue water, restrained roads and readable labels.
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
     maxZoom: 19,
     subdomains: "abcd",
     attribution: "© OpenStreetMap contributors © CARTO",
   }).addTo(state.map);
 
-  state.map.fitBounds(INDIA_BOUNDS, { padding: [18, 18] });
+  // Keep India + Sri Lanka boundaries visible above the rainfall raster.
+  // The state layer gives the reference-style internal India boundaries;
+  // the Sri Lanka outline is deliberately drawn separately and strongly.
+  addReferenceBoundaries();
+
+  state.map.fitBounds(INDIA_BOUNDS, { padding: [8, 8] });
   state.map.on("zoomend moveend resize", scheduleRender);
   setupRainfallHover();
 
@@ -329,6 +338,51 @@ function setupMap() {
       scheduleRender();
     });
     ro.observe(map);
+  }
+}
+
+let boundaryLayer = null;
+
+async function addReferenceBoundaries() {
+  try {
+    const [indiaRes, sriRes] = await Promise.all([
+      fetch("https://raw.githubusercontent.com/india-in-data/india-states-2019/master/india_states.geojson", { cache: "force-cache" }),
+      fetch("https://raw.githubusercontent.com/glynnbird/countriesgeojson/master/sri%20lanka.geojson", { cache: "force-cache" })
+    ]);
+    if (!indiaRes.ok || !sriRes.ok) throw new Error("Boundary data unavailable");
+
+    const india = await indiaRes.json();
+    const sriLanka = await sriRes.json();
+
+    boundaryLayer = L.layerGroup();
+
+    L.geoJSON(india, {
+      pane: "referenceBoundaries",
+      interactive: false,
+      style: {
+        color: "#34383d",
+        weight: 1.15,
+        opacity: 0.92,
+        fill: false
+      }
+    }).addTo(boundaryLayer);
+
+    L.geoJSON(sriLanka, {
+      pane: "referenceBoundaries",
+      interactive: false,
+      style: {
+        color: "#20252a",
+        weight: 1.8,
+        opacity: 0.98,
+        fill: false
+      }
+    }).addTo(boundaryLayer);
+
+    boundaryLayer.addTo(state.map);
+    boundaryLayer.bringToFront();
+    scheduleRender();
+  } catch (err) {
+    console.warn("Reference boundary overlay unavailable:", err);
   }
 }
 
