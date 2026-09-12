@@ -13,23 +13,28 @@ aside select{display:block;width:100%;margin-top:5px;padding:8px;border:1px soli
 aside input[type=range]{width:100%;margin-top:6px}
 aside hr{border:0;border-top:1px solid #e1e6ec;margin:14px 0}
 .note{font-size:11px;line-height:1.45;color:#66717d}
-section{min-width:0}
+
+/* Section layout holds map and places the colorbar strictly underneath */
+section{
+  min-width:0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 #map{height:760px;min-height:500px;position:relative;overflow:hidden;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.15);background:#dce7f2}
 .rainfall-overlay{position:absolute!important;pointer-events:none!important}
 
-/* Clean, Non-Overlapping Bottom-Right Colorbar Placement */
+/* Colorbar Placed Directly Below the Map */
 #legend {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 1000;
-  width: auto;
-  max-width: calc(100% - 24px);
-  padding: 8px 10px;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  padding: 10px 14px;
   background: rgba(255,255,255,0.97);
-  border: 1px solid rgba(0,0,0,0.15);
+  border: 1px solid rgba(0,0,0,0.12);
   border-radius: 8px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   font-size: 10px;
   display: flex;
   flex-direction: column;
@@ -40,7 +45,7 @@ section{min-width:0}
   font-weight: 700;
   font-size: 11px;
   text-align: center;
-  margin-bottom: 3px;
+  margin-bottom: 4px;
 }
 
 .legend-source {
@@ -50,10 +55,11 @@ section{min-width:0}
 .legend-bar {
   display: flex;
   flex-direction: row;
+  justify-content: center;
   gap: 1px;
-  margin-top: 3px;
+  margin-top: 4px;
+  width: 100%;
   overflow-x: auto;
-  max-width: 100%;
 }
 
 .legend-row {
@@ -61,29 +67,29 @@ section{min-width:0}
   flex-direction: column-reverse;
   align-items: center;
   gap: 3px;
-  width: 17px;
+  flex: 1;
+  min-width: 22px;
 }
 
 .legend-row i {
   display: block;
   width: 100%;
-  height: 14px;
+  height: 16px;
   border: none;
   border-radius: 0;
 }
 
 .legend-row span {
-  font-size: 8px;
+  font-size: 9px;
   line-height: 1;
   color: #17202a;
-  transform: scale(0.85);
 }
 
 @media(max-width:800px){
   main{grid-template-columns:1fr}
   #map{height:650px;min-height:420px}
-  #legend{right:6px;bottom:6px;padding:6px 8px}
-  .legend-row{width:14px}
+  .legend-row{min-width:14px}
+  .legend-row span{font-size:7px;transform:scale(0.85)}
 }
 
 .wind-toggle{font-weight:700}
