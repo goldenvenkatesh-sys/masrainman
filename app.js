@@ -413,13 +413,31 @@ async function addReferenceBoundaries() {
 function colorAt(value) {
   if (!Number.isFinite(value) || value < levels[0]) return null;
 
-  // Keep very light rainfall below 1 mm essentially white, as in the
-  // reference plot. The first visible coloured band starts at 1 mm.
+  // Keep everything below 1 mm pure white, as requested.
   if (value < 1) return "#ffffff";
 
   let idx = 3; // 1 mm band
   while (idx < levels.length - 1 && value >= levels[idx + 1]) idx++;
-  return colors[idx];
+
+  // Keep the reference palette, but soften transitions slightly so the
+  // 0.125° display cells do not look like a hard checkerboard. The colour
+  // bar remains stepped; only the plotted field gets this subtle smoothing.
+  if (idx >= colors.length - 1 || idx >= levels.length - 1) {
+    return colors[Math.min(idx, colors.length - 1)];
+  }
+
+  const lo = levels[idx];
+  const hi = levels[idx + 1];
+  const t = Math.max(0, Math.min(1, (value - lo) / (hi - lo)));
+  const strength = 0.28;
+  const eased = (t * t * (3 - 2 * t)) * strength;
+
+  const a = hexToRgb(colors[idx]);
+  const b = hexToRgb(colors[idx + 1]);
+  const r = Math.round(a[0] * (1 - eased) + b[0] * eased);
+  const g = Math.round(a[1] * (1 - eased) + b[1] * eased);
+  const bl = Math.round(a[2] * (1 - eased) + b[2] * eased);
+  return `rgb(${r},${g},${bl})`;
 }
 
 function buildSourceGrid() {
@@ -778,12 +796,11 @@ function drawRainfall() {
             Math.max(nw.y, ne.y, se.y, sw.y) < -2 || Math.min(nw.y, ne.y, se.y, sw.y) > h + 2) continue;
 
         ctx.fillStyle = color;
-        ctx.fillRect(
-          Math.floor(Math.min(nw.x, sw.x)),
-          Math.floor(Math.min(nw.y, ne.y)),
-          Math.ceil(Math.abs(ne.x - nw.x)),
-          Math.ceil(Math.abs(sw.y - nw.y))
-        );
+        const x0 = Math.floor(Math.min(nw.x, sw.x));
+        const y0 = Math.floor(Math.min(nw.y, ne.y));
+        const cw = Math.ceil(Math.abs(ne.x - nw.x)) + 1;
+        const ch = Math.ceil(Math.abs(sw.y - nw.y)) + 1;
+        ctx.fillRect(x0, y0, cw, ch);
       }
     }
   });
