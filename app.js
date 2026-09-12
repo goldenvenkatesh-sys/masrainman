@@ -12,13 +12,33 @@ const levels = [
   30, 35, 40, 45, 50, 60, 70, 80, 100, 150, 200, 300
 ];
 
-// Reference-style filled-contour palette. The map uses these stepped
-// colours, while the existing colourbar stays in its original position.
+// Filled-contour palette based on the user's Tamil Nadu reference map.
+// One hard colour band is assigned to each rainfall threshold.
 const colors = [
-  "#ffffff", "#ddd9ff", "#c6d4ff", "#a8c8f0", "#76a9dc", "#5b96d1",
-  "#2679b9", "#1768a5", "#167a9f", "#188b45", "#35a843", "#73c53f",
-  "#a8d62f", "#d8e82b", "#ffe51f", "#ffc21c", "#ff9e16", "#f47b16",
-  "#e94b18", "#d72a1d", "#c51f50", "#e2477a", "#f080a0", "#6b6b6b"
+  "#ffffff", // 0.1
+  "#ddd9ff", // 0.3
+  "#c6d4ff", // 0.5
+  "#a8c8f0", // 1
+  "#76a9dc", // 2
+  "#5b96d1", // 3
+  "#2679b9", // 5
+  "#1768a5", // 7
+  "#167a9f", // 10
+  "#188b45", // 15
+  "#35a843", // 20
+  "#73c53f", // 25
+  "#a8d62f", // 30
+  "#d8e82b", // 35
+  "#ffe51f", // 40
+  "#ffc21c", // 45
+  "#ff9e16", // 50
+  "#f47b16", // 60
+  "#e94b18", // 70
+  "#d72a1d", // 80
+  "#c51f50", // 100
+  "#e2477a", // 150
+  "#f080a0", // 200
+  "#6b6b6b"  // 300+
 ];
 
 const state = {
@@ -43,7 +63,7 @@ const state = {
 // - stepped colour levels, so rainfall bands stay crisp
 // - redraws at the current map viewport, so zooming does not scale a tiny raster
 const RAIN_CELL_SAMPLING = "nearest";
-const RAIN_RENDER_STEP = 0.25;
+const RAIN_RENDER_STEP = 0.125;
 const WIND_GRID_SPACING_DEG = 2.0;
 const WIND_MIN_KNOTS = 3;
 
@@ -393,10 +413,9 @@ async function addReferenceBoundaries() {
 function colorAt(value) {
   if (!Number.isFinite(value) || value < levels[0]) return null;
 
-  // Hard bands: one colour per reference legend threshold.
   let idx = 0;
   while (idx < levels.length - 1 && value >= levels[idx + 1]) idx++;
-  return colors[Math.min(idx, colors.length - 1)];
+  return colors[idx];
 }
 
 function buildSourceGrid() {
@@ -709,10 +728,10 @@ function drawRainfall() {
   const halfLat = latStep / 2;
   const halfLon = lonStep / 2;
 
-  // Keep the original 0.5° data grid, but subdivide each source cell into
-  // 0.25° display cells. Values at the smaller-cell centres are bilinearly
-  // interpolated from the model grid, then converted to hard colour bands.
-  // This gives much smaller rainfall pixels without blurring the map.
+  // Keep the original model grid, but subdivide each source cell into
+  // fine 0.125° display cells. Values at the smaller-cell centres are
+  // bilinearly interpolated, then converted to many hard filled-contour
+  // bands. This closely follows the user's reference plotting style.
   const displayStep = Math.min(RAIN_RENDER_STEP, latStep, lonStep);
   const subRows = Math.max(1, Math.round(latStep / displayStep));
   const subCols = Math.max(1, Math.round(lonStep / displayStep));
@@ -895,13 +914,15 @@ function buildLegend() {
   const sourceText = state.rainSet === "aifs"
     ? `AIFS Set — ${escapeHtml(state.aifsModel)}`
     : "Standard model blend";
+
+  const rows = levels.map((v, i) =>
+    `<div class="legend-row"><i style="background:${colors[i]}"></i><span>${v}</span></div>`
+  ).join("");
+
   legend.innerHTML =
-    `<div class="legend-title">6-hour rainfall (mm) — ${sourceText}</div>` +
-    `<div class="legend-scale">` +
-    levels.map((v,i) =>
-      `<span class="legend-item"><i style="background:${colors[Math.min(i, colors.length - 1)]}"></i>${v}</span>`
-    ).join("") +
-    `</div>`;
+    `<div class="legend-title">Rainfall (mm)</div>` +
+    `<div class="legend-source">${sourceText}</div>` +
+    `<div class="legend-bar">${rows}</div>`;
 }
 
 async function loadData() {
