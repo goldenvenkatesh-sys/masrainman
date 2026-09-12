@@ -1,11 +1,11 @@
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;font-family:Arial,sans-serif;background:#eef3f8;color:#17202a}
+html,body{margin:0;padding:0;font-family:Arial,sans-serif;background:#ffffff;color:#17202a}
 body{min-height:100vh}
 header{padding:14px 18px;background:linear-gradient(135deg,#08145a,#234bbd);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 header h1{margin:0 0 4px;font-size:22px}
 #time{font-size:13px;line-height:1.5}
 
-/* Restored 2-Column Desktop Grid Layout (Sidebar Left, Map Right) */
+/* Restored 2-Column Desktop Grid Layout */
 main{display:grid;grid-template-columns:250px minmax(0,1fr);gap:12px;padding:12px;max-width:1500px;margin:auto}
 
 aside{background:#fff;border-radius:10px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);height:max-content}
@@ -19,10 +19,11 @@ aside hr{border:0;border-top:1px solid #e1e6ec;margin:14px 0}
 
 section{min-width:0;position:relative}
 
-#map{height:760px;min-height:500px;position:relative;overflow:hidden;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.15);background:#dce7f2}
+/* Pure White & High-Contrast Map Container Background */
+#map{height:760px;min-height:500px;position:relative;overflow:hidden;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.15);background:#ffffff}
 .rainfall-overlay{position:absolute!important;pointer-events:none!important}
 
-/* Colorbar safely floating inside the bottom-right corner of the map */
+/* Floating Colorbar in Bottom-Right Corner of Map */
 #legend {
   position: absolute;
   right: 12px;
@@ -144,7 +145,7 @@ section{min-width:0;position:relative}
 #aifsModelWrap select{font-size:12px}
 
 .leaflet-container {
-  background: #d8edf7;
+  background: #ffffff;
 }
 
 .leaflet-tile {
