@@ -1,9 +1,9 @@
 /* MasRainman — Day 1..Day 12 rainfall + optional 850 hPa wind barbs */
 
-// Tightly constrain the geographic extent to South India
+// Pan India geographic bounds
 const INDIA_BOUNDS = L.latLngBounds(
-  [8.0, 74.0],
-  [16.0, 85.0]
+  [6.5, 68.0],
+  [37.5, 97.5]
 );
 
 const levels = [
@@ -55,10 +55,9 @@ const state = {
   hoverPoint: null,
 };
 
-const RAIN_CELL_SAMPLING = "nearest";
-const RAIN_RENDER_STEP = 0.025; 
 const WIND_GRID_SPACING_DEG = 2.0;
 const WIND_MIN_KNOTS = 3;
+let panStartPoint = null;
 
 function $(id) { return document.getElementById(id); }
 
@@ -115,7 +114,7 @@ function ensureUi() {
   if (note) {
     note.innerHTML =
       "Rainfall is accumulated for each forecast day. " +
-      "Rainfall display uses 0.5° grid bilinear sampling with stepped colours. " +
+      "Rainfall display uses dynamic bilinear sampling. " +
       "850 hPa wind barbs use 12 UTC representative wind.";
   }
 
@@ -172,7 +171,7 @@ function setupControls() {
   document.querySelectorAll("input.model").forEach(box => {
     box.addEventListener("change", () => {
       getSelectedModels();
-      drawRainfall();
+      scheduleRender();
     });
   });
 
@@ -183,7 +182,7 @@ function setupControls() {
       if (wrap) wrap.style.display = state.rainSet === "aifs" ? "block" : "none";
       updateHeader();
       updateWindControls();
-      drawRainfall();
+      scheduleRender();
     });
   });
 
@@ -192,7 +191,7 @@ function setupControls() {
     aifsModel.addEventListener("change", () => {
       state.aifsModel = aifsModel.value;
       updateHeader();
-      drawRainfall();
+      scheduleRender();
     });
   }
 
@@ -201,7 +200,7 @@ function setupControls() {
     day.addEventListener("change", () => {
       state.selectedDay = Number(day.value) || 0;
       updateHeader();
-      drawRainfall();
+      scheduleRender();
     });
   }
 
@@ -220,7 +219,7 @@ function setupControls() {
       state.windEnabled = wind.checked;
       const wrap = $("windSourceWrap");
       if (wrap) wrap.style.display = wind.checked ? "block" : "none";
-      drawRainfall();
+      scheduleRender();
     });
   }
 
@@ -228,7 +227,7 @@ function setupControls() {
   if (windSource) {
     windSource.addEventListener("change", () => {
       state.windSource = windSource.value;
-      drawRainfall();
+      scheduleRender();
     });
   }
 }
@@ -334,7 +333,35 @@ function setupMap() {
 
   addReferenceBoundaries();
   state.map.fitBounds(INDIA_BOUNDS, { padding: [8, 8] });
-  state.map.on("zoomend moveend resize", scheduleRender);
+  
+  // FIX: Kinetic Pan and Zoom Animation Handlers
+  state.map.on("movestart", () => {
+    panStartPoint = state.map.getPixelBounds().min;
+  });
+
+  state.map.on("move", () => {
+    if (!state.canvas || !panStartPoint) return;
+    const current = state.map.getPixelBounds().min;
+    const x = panStartPoint.x - current.x;
+    const y = panStartPoint.y - current.y;
+    // Visually drag the canvas along with the map to prevent "zig zag"
+    state.canvas.style.transform = `translate(${x}px, ${y}px)`;
+  });
+
+  state.map.on("zoomstart", () => {
+    // Hide smoothly during zoom scale animations
+    if (state.canvas) state.canvas.style.opacity = "0";
+  });
+
+  state.map.on("moveend zoomend resize", () => {
+    if (state.canvas) {
+      state.canvas.style.transform = "translate(0px, 0px)";
+      state.canvas.style.opacity = String(state.opacity);
+    }
+    panStartPoint = null;
+    scheduleRender();
+  });
+
   setupRainfallHover();
 
   const map = document.getElementById("map");
@@ -392,11 +419,10 @@ async function addReferenceBoundaries() {
   }
 }
 
-// FULLY NULLIFY VALUES BELOW 1MM TO ELIMINATE MAP WHITE-OUT
 function colorAt(value) {
   if (!Number.isFinite(value) || value < 1) return null; 
   
-  let idx = 3; // Index 3 corresponds to the 1mm band in the colors array
+  let idx = 3; 
   while (idx < levels.length - 1 && value >= levels[idx + 1]) idx++;
   
   return colors[Math.min(idx, colors.length - 1)];
@@ -674,6 +700,8 @@ function makeCanvas() {
     state.canvas.style.pointerEvents = "none";
     state.canvas.style.zIndex = "450";
     state.canvas.style.opacity = String(state.opacity);
+    // Smooth transition when hiding the canvas during a zoom jump
+    state.canvas.style.transition = "opacity 0.15s ease";
     mapEl.appendChild(state.canvas);
   }
 
@@ -688,7 +716,7 @@ function makeCanvas() {
   state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-// INTEGRATED LAG FIX: VIEWPORT CULLING + PIXEL MATH
+// FULL FIX: Dynamic Level-of-Detail Rendering
 function drawRainfall() {
   if (!state.data || !state.map) return;
   makeCanvas();
@@ -708,7 +736,18 @@ function drawRainfall() {
   const halfLat = latStep / 2;
   const halfLon = lonStep / 2;
 
-  const displayStep = Math.min(RAIN_RENDER_STEP, latStep, lonStep);
+  // FIX 1: Adjust grid resolution dynamically based on zoom level to prevent lag
+  const zoom = state.map.getZoom();
+  let dynamicStep = 0.125;
+  if (zoom >= 7) {
+    dynamicStep = 0.025; // Super high-res for zoomed-in state
+  } else if (zoom === 6) {
+    dynamicStep = 0.05;  // Medium-res 
+  } else {
+    dynamicStep = 0.125; // Standard-res for Pan-India view (prevents 20s lag)
+  }
+
+  const displayStep = Math.min(dynamicStep, latStep, lonStep);
   const subRows = Math.max(1, Math.round(latStep / displayStep));
   const subCols = Math.max(1, Math.round(lonStep / displayStep));
   const cellLat = latStep / subRows;
@@ -732,7 +771,7 @@ function drawRainfall() {
     const cellNW = state.map.latLngToContainerPoint([cellNorth, cellWest]);
     const cellSE = state.map.latLngToContainerPoint([cellSouth, cellEast]);
 
-    // Skip all math if this specific 0.5° grid box is completely off-screen
+    // FIX 2: Fast Viewport Culling - Ignore grid blocks completely off-screen
     if (
       Math.max(cellNW.x, cellSE.x) < -20 || 
       Math.min(cellNW.x, cellSE.x) > w + 20 ||
@@ -918,7 +957,12 @@ async function loadData() {
   updateWindControls();
   updateHeader();
   buildLegend();
-  drawRainfall();
+  
+  setTimeout(() => {
+    state.map.invalidateSize();
+    state.map.fitBounds(INDIA_BOUNDS, { padding: [10, 10] });
+    drawRainfall();
+  }, 250);
 }
 
 function initDataLoad() {
@@ -931,4 +975,4 @@ function initDataLoad() {
 
 setupMap();
 initDataLoad();
-setInterval(initDataLoad, 5 * 60 * 1000); // 5-minute auto refresh polling
+setInterval(initDataLoad, 5 * 60 * 1000);
