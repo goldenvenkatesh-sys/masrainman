@@ -1,10 +1,9 @@
 /* MasRainman — Day 1..Day 12 rainfall + optional 850 hPa wind barbs */
 
-// Default India-centered view. Keep the full Indian peninsula and Sri Lanka
-// visible while retaining enough north/east context for the reference layout.
+// Tightly constrain the geographic extent to South India
 const INDIA_BOUNDS = L.latLngBounds(
-  [5.5, 68.0],
-  [36.5, 97.5]
+  [8.0, 74.0],
+  [16.0, 85.0]
 );
 
 const levels = [
@@ -12,8 +11,6 @@ const levels = [
   30, 35, 40, 45, 50, 60, 70, 80, 100, 150, 200, 300
 ];
 
-// Filled-contour palette based on the user's Tamil Nadu reference map.
-// One hard colour band is assigned to each rainfall threshold.
 const colors = [
   "#ffffff", // 0.1
   "#ddd9ff", // 0.3
@@ -58,10 +55,6 @@ const state = {
   hoverPoint: null,
 };
 
-// Balanced rainfall rendering:
-// - bilinear interpolation across the 0.5° display grid
-// - stepped colour levels, so rainfall bands stay crisp
-// - redraws at the current map viewport, so zooming does not scale a tiny raster
 const RAIN_CELL_SAMPLING = "nearest";
 const RAIN_RENDER_STEP = 0.125;
 const WIND_GRID_SPACING_DEG = 2.0;
@@ -87,7 +80,6 @@ function ensureUi() {
   const heading = document.querySelector("header h1");
   if (heading) heading.textContent = "24-Hour Rainfall Forecast";
 
-  // Model run / valid-time information panel.
   if (!$("runDetails")) {
     const details = document.createElement("div");
     details.id = "runDetails";
@@ -127,7 +119,6 @@ function ensureUi() {
       "850 hPa wind barbs use 12 UTC representative wind.";
   }
 
-  // Create optional wind controls if they are not already in HTML.
   if (!$('windControls')) {
     const box = document.createElement("div");
     box.id = "windControls";
@@ -336,21 +327,12 @@ function setupMap() {
   state.map.createPane("referenceBoundaries");
   state.map.getPane("referenceBoundaries").style.zIndex = 650;
 
-  // Use the public OpenStreetMap raster tiles as the reliable basemap.
-  // CARTO's raster endpoint can now return an API-key-required layer in
-  // embedded pages, which was causing the visible "API KEY REQUIRED"
-  // watermark. OSM keeps the India/Sri Lanka geography and place labels
-  // while the rainfall canvas remains visually on top.
   const base = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "© OpenStreetMap contributors",
   }).addTo(state.map);
 
-  // Keep India + Sri Lanka boundaries visible above the rainfall raster.
-  // The state layer gives the reference-style internal India boundaries;
-  // the Sri Lanka outline is deliberately drawn separately and strongly.
   addReferenceBoundaries();
-
   state.map.fitBounds(INDIA_BOUNDS, { padding: [8, 8] });
   state.map.on("zoomend moveend resize", scheduleRender);
   setupRainfallHover();
@@ -412,32 +394,12 @@ async function addReferenceBoundaries() {
 
 function colorAt(value) {
   if (!Number.isFinite(value) || value < levels[0]) return null;
-
-  // Keep everything below 1 mm pure white, as requested.
   if (value < 1) return "#ffffff";
-
-  let idx = 3; // 1 mm band
+  
+  let idx = 3; 
   while (idx < levels.length - 1 && value >= levels[idx + 1]) idx++;
-
-  // Keep the reference palette, but soften transitions slightly so the
-  // 0.125° display cells do not look like a hard checkerboard. The colour
-  // bar remains stepped; only the plotted field gets this subtle smoothing.
-  if (idx >= colors.length - 1 || idx >= levels.length - 1) {
-    return colors[Math.min(idx, colors.length - 1)];
-  }
-
-  const lo = levels[idx];
-  const hi = levels[idx + 1];
-  const t = Math.max(0, Math.min(1, (value - lo) / (hi - lo)));
-  const strength = 0.28;
-  const eased = (t * t * (3 - 2 * t)) * strength;
-
-  const a = hexToRgb(colors[idx]);
-  const b = hexToRgb(colors[idx + 1]);
-  const r = Math.round(a[0] * (1 - eased) + b[0] * eased);
-  const g = Math.round(a[1] * (1 - eased) + b[1] * eased);
-  const bl = Math.round(a[2] * (1 - eased) + b[2] * eased);
-  return `rgb(${r},${g},${bl})`;
+  
+  return colors[Math.min(idx, colors.length - 1)];
 }
 
 function buildSourceGrid() {
@@ -456,9 +418,6 @@ function buildSourceGrid() {
 function nearestPoint(grid, lat, lon) {
   const { lats, lons, map } = grid;
   if (!lats.length || !lons.length) return null;
-
-  // The generated display grid is regular 0.5°, so calculate the
-  // nearest index directly instead of scanning the entire grid.
   const latStep = lats.length > 1 ? (lats[1] - lats[0]) : 0.5;
   const lonStep = lons.length > 1 ? (lons[1] - lons[0]) : 0.5;
   const latIndex = Math.max(0, Math.min(lats.length - 1, Math.round((lat - lats[0]) / latStep)));
@@ -509,7 +468,6 @@ function bilinearRain(grid, lat, lon, model, dayIndex) {
     return top * (1 - b.fy) + bottom * b.fy;
   }
 
-  // Graceful fallback for model-horizon edges or missing cells.
   const nearest = nearestPoint(grid, lat, lon);
   const v = nearest?.models?.[model]?.rain?.[dayIndex];
   return Number.isFinite(v) ? v : null;
@@ -750,10 +708,6 @@ function drawRainfall() {
   const halfLat = latStep / 2;
   const halfLon = lonStep / 2;
 
-  // Keep the original model grid, but subdivide each source cell into
-  // fine 0.125° display cells. Values at the smaller-cell centres are
-  // bilinearly interpolated, then converted to many hard filled-contour
-  // bands. This closely follows the user's reference plotting style.
   const displayStep = Math.min(RAIN_RENDER_STEP, latStep, lonStep);
   const subRows = Math.max(1, Math.round(latStep / displayStep));
   const subCols = Math.max(1, Math.round(lonStep / displayStep));
@@ -765,9 +719,7 @@ function drawRainfall() {
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, state.opacity));
   ctx.imageSmoothingEnabled = false;
-  // Very light edge blur only on the rainfall fills. This softens the tiny
-  // 0.125° cell texture without turning the map into a blurry raster.
-  ctx.filter = "blur(0.35px)";
+  ctx.filter = "none";
 
   source.points.forEach(point => {
     const lat = Number(point.lat);
@@ -808,8 +760,6 @@ function drawRainfall() {
     }
   });
 
-  // Do not blur wind barbs or any later canvas drawing.
-  ctx.filter = "none";
   ctx.restore();
 
   if (state.windEnabled) {
@@ -830,7 +780,6 @@ function drawWindBarbs(ctx, grid, w, h) {
   const bounds = state.data.domain;
   const spacing = WIND_GRID_SPACING_DEG;
 
-  // Start on clean degree multiples so the barb field is stable while zooming.
   const latStart = Math.ceil(bounds.lat_min / spacing) * spacing;
   const lonStart = Math.ceil(bounds.lon_min / spacing) * spacing;
 
@@ -861,8 +810,6 @@ function drawWindBarbs(ctx, grid, w, h) {
 }
 
 function drawOneBarb(ctx, x, y, u, v, knots) {
-  // Meteorological wind direction is FROM. The U/V vector is TOWARD.
-  // Screen coordinates: east = +x, north = -y.
   const mag = Math.sqrt(u*u + v*v) || 1;
   const fromX = -u / mag;
   const fromY = v / mag;
@@ -886,7 +833,6 @@ function drawOneBarb(ctx, x, y, u, v, knots) {
   const sideX = -Math.sin(angle);
   const sideY = Math.cos(angle);
 
-  // Draw 50 kt pennants first, then 10 kt, then 5 kt.
   const fifties = Math.floor(remaining / 50);
   remaining -= fifties * 50;
   const tens = Math.floor(remaining / 10);
@@ -964,9 +910,14 @@ async function loadData() {
   drawRainfall();
 }
 
+function initDataLoad() {
+  loadData().catch(err => {
+    console.error(err);
+    const time = $("time");
+    if (time) time.textContent = `Unable to load rainfall data: ${err.message}`;
+  });
+}
+
 setupMap();
-loadData().catch(err => {
-  console.error(err);
-  const time = $("time");
-  if (time) time.textContent = `Unable to load rainfall data: ${err.message}`;
-});
+initDataLoad();
+setInterval(initDataLoad, 5 * 60 * 1000); // 5-minute auto refresh polling
