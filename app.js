@@ -326,10 +326,10 @@ function setupMap() {
   state.map.createPane("referenceBoundaries");
   state.map.getPane("referenceBoundaries").style.zIndex = 650;
 
-  const base = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "© OpenStreetMap contributors",
-  }).addTo(state.map);
+  // White geographic background.
+  // OSM tiles are intentionally disabled so roads, terrain and land colors are removed.
+  // The existing India/Sri Lanka GeoJSON boundary layer remains visible.
+  state.map.getContainer().style.backgroundColor = "#ffffff";
 
   addReferenceBoundaries();
   state.map.fitBounds(INDIA_BOUNDS, { padding: [8, 8] });
