@@ -56,7 +56,8 @@ const state = {
 };
 
 const RAIN_CELL_SAMPLING = "nearest";
-const RAIN_RENDER_STEP = 0.125;
+// LOWERED TO 0.025 FOR HIGH-RES SMOOTH CONTOURS
+const RAIN_RENDER_STEP = 0.025; 
 const WIND_GRID_SPACING_DEG = 2.0;
 const WIND_MIN_KNOTS = 3;
 
@@ -392,11 +393,11 @@ async function addReferenceBoundaries() {
   }
 }
 
+// CORRECTED TO START FROM 0.1 AND MATCH DISCRETE COLOR BANDS
 function colorAt(value) {
   if (!Number.isFinite(value) || value < levels[0]) return null;
-  if (value < 1) return "#ffffff";
   
-  let idx = 3; 
+  let idx = 0; 
   while (idx < levels.length - 1 && value >= levels[idx + 1]) idx++;
   
   return colors[Math.min(idx, colors.length - 1)];
@@ -555,7 +556,6 @@ function windAtPoint(grid, lat, lon, dayIndex, source) {
     v: sumV / count,
   };
 }
-
 
 function setupRainfallHover() {
   const mapEl = $("map");
@@ -753,8 +753,9 @@ function drawRainfall() {
         ctx.fillStyle = color;
         const x0 = Math.floor(Math.min(nw.x, sw.x));
         const y0 = Math.floor(Math.min(nw.y, ne.y));
-        const cw = Math.ceil(Math.abs(ne.x - nw.x)) + 1;
-        const ch = Math.ceil(Math.abs(sw.y - nw.y)) + 1;
+        // INCREASED RECTANGLE OVERLAP TO ELIMINATE GRID SEAM ARTIFACTS
+        const cw = Math.ceil(Math.abs(ne.x - nw.x)) + 2;
+        const ch = Math.ceil(Math.abs(sw.y - nw.y)) + 2;
         ctx.fillRect(x0, y0, cw, ch);
       }
     }
