@@ -46,7 +46,7 @@ const state = {
 // - stepped colour levels, so rainfall bands stay crisp
 // - redraws at the current map viewport, so zooming does not scale a tiny raster
 const RAIN_CELL_SAMPLING = "nearest";
-const RAIN_RENDER_STEP = 1;
+const RAIN_RENDER_STEP = 0.25;
 const WIND_GRID_SPACING_DEG = 2.0;
 const WIND_MIN_KNOTS = 3;
 
@@ -712,10 +712,18 @@ function drawRainfall() {
   const halfLat = latStep / 2;
   const halfLon = lonStep / 2;
 
-  // Render the actual 0.5° source/display cells as polygons. This is the
-  // important difference from the previous pixel-sampling approach: each
-  // rainfall cell has a genuinely hard edge, matching the reference map's
-  // blocky numerical-weather/radar appearance.
+  // Keep the original 0.5° data grid, but subdivide each source cell into
+  // 0.25° display cells. Values at the smaller-cell centres are bilinearly
+  // interpolated from the model grid, then converted to hard colour bands.
+  // This gives much smaller rainfall pixels without blurring the map.
+  const displayStep = Math.min(RAIN_RENDER_STEP, latStep, lonStep);
+  const subRows = Math.max(1, Math.round(latStep / displayStep));
+  const subCols = Math.max(1, Math.round(lonStep / displayStep));
+  const cellLat = latStep / subRows;
+  const cellLon = lonStep / subCols;
+  const subHalfLat = cellLat / 2;
+  const subHalfLon = cellLon / 2;
+
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, state.opacity));
   ctx.imageSmoothingEnabled = false;
@@ -725,28 +733,39 @@ function drawRainfall() {
     const lon = Number(point.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
-    const value = state.rainSet === "aifs"
-      ? nearestAifsRain(source, lat, lon, state.aifsModel, state.selectedDay)
-      : nearestBlendedRain(source, lat, lon, state.selectedDay, models);
-    const color = colorAt(value);
-    if (!color) return;
+    for (let r = 0; r < subRows; r++) {
+      const centerLat = lat + halfLat - (r + 0.5) * cellLat;
+      const northLat = centerLat + subHalfLat;
+      const southLat = centerLat - subHalfLat;
 
-    const nw = state.map.latLngToContainerPoint([lat + halfLat, lon - halfLon]);
-    const ne = state.map.latLngToContainerPoint([lat + halfLat, lon + halfLon]);
-    const se = state.map.latLngToContainerPoint([lat - halfLat, lon + halfLon]);
-    const sw = state.map.latLngToContainerPoint([lat - halfLat, lon - halfLon]);
+      for (let c = 0; c < subCols; c++) {
+        const centerLon = lon - halfLon + (c + 0.5) * cellLon;
+        const westLon = centerLon - subHalfLon;
+        const eastLon = centerLon + subHalfLon;
 
-    if (Math.max(nw.x, ne.x, se.x, sw.x) < -2 || Math.min(nw.x, ne.x, se.x, sw.x) > w + 2 ||
-        Math.max(nw.y, ne.y, se.y, sw.y) < -2 || Math.min(nw.y, ne.y, se.y, sw.y) > h + 2) return;
+        const value = state.rainSet === "aifs"
+          ? bilinearAifsRain(source, centerLat, centerLon, state.aifsModel, state.selectedDay)
+          : blendedRain(source, centerLat, centerLon, state.selectedDay, models);
+        const color = colorAt(value);
+        if (!color) continue;
 
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(nw.x, nw.y);
-    ctx.lineTo(ne.x, ne.y);
-    ctx.lineTo(se.x, se.y);
-    ctx.lineTo(sw.x, sw.y);
-    ctx.closePath();
-    ctx.fill();
+        const nw = state.map.latLngToContainerPoint([northLat, westLon]);
+        const ne = state.map.latLngToContainerPoint([northLat, eastLon]);
+        const se = state.map.latLngToContainerPoint([southLat, eastLon]);
+        const sw = state.map.latLngToContainerPoint([southLat, westLon]);
+
+        if (Math.max(nw.x, ne.x, se.x, sw.x) < -2 || Math.min(nw.x, ne.x, se.x, sw.x) > w + 2 ||
+            Math.max(nw.y, ne.y, se.y, sw.y) < -2 || Math.min(nw.y, ne.y, se.y, sw.y) > h + 2) continue;
+
+        ctx.fillStyle = color;
+        ctx.fillRect(
+          Math.floor(Math.min(nw.x, sw.x)),
+          Math.floor(Math.min(nw.y, ne.y)),
+          Math.ceil(Math.abs(ne.x - nw.x)),
+          Math.ceil(Math.abs(sw.y - nw.y))
+        );
+      }
+    }
   });
 
   ctx.restore();
