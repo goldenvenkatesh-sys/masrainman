@@ -85,3 +85,10 @@ section{min-width:0}
 .aifs-heading{font-weight:700;font-size:13px;margin:4px 0 7px;color:#17202a}
 #aifsModelWrap{font-size:12px}
 #aifsModelWrap select{font-size:12px}
+
+/* Target-map legend: compact horizontal radar-style scale */
+#legend{font-size:11px}
+.legend-title{margin-bottom:6px}
+.legend-scale{display:flex;flex-wrap:wrap;align-items:center;gap:3px 7px}
+.legend-item{margin-right:0}
+.legend-item i{width:18px;height:10px;border:0;border-radius:0}
