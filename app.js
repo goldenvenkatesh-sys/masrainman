@@ -56,7 +56,6 @@ const state = {
 };
 
 const RAIN_CELL_SAMPLING = "nearest";
-// LOWERED TO 0.025 FOR HIGH-RES SMOOTH CONTOURS
 const RAIN_RENDER_STEP = 0.025; 
 const WIND_GRID_SPACING_DEG = 2.0;
 const WIND_MIN_KNOTS = 3;
@@ -393,11 +392,11 @@ async function addReferenceBoundaries() {
   }
 }
 
-// CORRECTED TO START FROM 0.1 AND MATCH DISCRETE COLOR BANDS
+// FULLY NULLIFY VALUES BELOW 1MM TO ELIMINATE MAP WHITE-OUT
 function colorAt(value) {
-  if (!Number.isFinite(value) || value < levels[0]) return null;
+  if (!Number.isFinite(value) || value < 1) return null; 
   
-  let idx = 0; 
+  let idx = 3; // Index 3 corresponds to the 1mm band in the colors array
   while (idx < levels.length - 1 && value >= levels[idx + 1]) idx++;
   
   return colors[Math.min(idx, colors.length - 1)];
@@ -689,6 +688,7 @@ function makeCanvas() {
   state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
+// INTEGRATED LAG FIX: VIEWPORT CULLING + PIXEL MATH
 function drawRainfall() {
   if (!state.data || !state.map) return;
   makeCanvas();
@@ -713,8 +713,6 @@ function drawRainfall() {
   const subCols = Math.max(1, Math.round(lonStep / displayStep));
   const cellLat = latStep / subRows;
   const cellLon = lonStep / subCols;
-  const subHalfLat = cellLat / 2;
-  const subHalfLon = cellLon / 2;
 
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, state.opacity));
@@ -726,37 +724,49 @@ function drawRainfall() {
     const lon = Number(point.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
+    const cellNorth = lat + halfLat;
+    const cellSouth = lat - halfLat;
+    const cellWest = lon - halfLon;
+    const cellEast = lon + halfLon;
+
+    const cellNW = state.map.latLngToContainerPoint([cellNorth, cellWest]);
+    const cellSE = state.map.latLngToContainerPoint([cellSouth, cellEast]);
+
+    // Skip all math if this specific 0.5° grid box is completely off-screen
+    if (
+      Math.max(cellNW.x, cellSE.x) < -20 || 
+      Math.min(cellNW.x, cellSE.x) > w + 20 ||
+      Math.max(cellNW.y, cellSE.y) < -20 || 
+      Math.min(cellNW.y, cellSE.y) > h + 20
+    ) {
+      return; 
+    }
+
+    const pxWidth = Math.abs(cellSE.x - cellNW.x);
+    const pxHeight = Math.abs(cellSE.y - cellNW.y);
+    const subPxW = pxWidth / subCols;
+    const subPxH = pxHeight / subRows;
+    
+    const startX = Math.min(cellNW.x, cellSE.x);
+    const startY = Math.min(cellNW.y, cellSE.y);
+
     for (let r = 0; r < subRows; r++) {
-      const centerLat = lat + halfLat - (r + 0.5) * cellLat;
-      const northLat = centerLat + subHalfLat;
-      const southLat = centerLat - subHalfLat;
+      const centerLat = cellNorth - (r + 0.5) * cellLat;
+      const y0 = startY + r * subPxH;
 
       for (let c = 0; c < subCols; c++) {
-        const centerLon = lon - halfLon + (c + 0.5) * cellLon;
-        const westLon = centerLon - subHalfLon;
-        const eastLon = centerLon + subHalfLon;
+        const centerLon = cellWest + (c + 0.5) * cellLon;
+        const x0 = startX + c * subPxW;
 
         const value = state.rainSet === "aifs"
           ? bilinearAifsRain(source, centerLat, centerLon, state.aifsModel, state.selectedDay)
           : blendedRain(source, centerLat, centerLon, state.selectedDay, models);
+        
         const color = colorAt(value);
         if (!color) continue;
 
-        const nw = state.map.latLngToContainerPoint([northLat, westLon]);
-        const ne = state.map.latLngToContainerPoint([northLat, eastLon]);
-        const se = state.map.latLngToContainerPoint([southLat, eastLon]);
-        const sw = state.map.latLngToContainerPoint([southLat, westLon]);
-
-        if (Math.max(nw.x, ne.x, se.x, sw.x) < -2 || Math.min(nw.x, ne.x, se.x, sw.x) > w + 2 ||
-            Math.max(nw.y, ne.y, se.y, sw.y) < -2 || Math.min(nw.y, ne.y, se.y, sw.y) > h + 2) continue;
-
         ctx.fillStyle = color;
-        const x0 = Math.floor(Math.min(nw.x, sw.x));
-        const y0 = Math.floor(Math.min(nw.y, ne.y));
-        // INCREASED RECTANGLE OVERLAP TO ELIMINATE GRID SEAM ARTIFACTS
-        const cw = Math.ceil(Math.abs(ne.x - nw.x)) + 2;
-        const ch = Math.ceil(Math.abs(sw.y - nw.y)) + 2;
-        ctx.fillRect(x0, y0, cw, ch);
+        ctx.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(subPxW) + 1, Math.ceil(subPxH) + 1);
       }
     }
   });
