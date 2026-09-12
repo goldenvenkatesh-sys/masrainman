@@ -712,7 +712,7 @@ function makeCanvas() {
   state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-// ULTRA-SOFT BLENDING WITH INCREASED BLUR TO REMOVE GRAIN TEXTURE
+// ULTRA-FAST, SMOOTH RENDERING (LAG-FREE OPTIMIZED STEP 0.05 WITH NO HEAVY BLUR FILTER)
 function drawRainfall() {
   if (!state.data || !state.map) return;
   makeCanvas();
@@ -732,7 +732,8 @@ function drawRainfall() {
   const halfLat = latStep / 2;
   const halfLon = lonStep / 2;
 
-  const displayStep = 0.035; 
+  // Optimized step for buttery-smooth panning performance without CPU lag
+  const displayStep = 0.05; 
   const subRows = Math.max(1, Math.round(latStep / displayStep));
   const subCols = Math.max(1, Math.round(lonStep / displayStep));
   const cellLat = latStep / subRows;
@@ -741,8 +742,7 @@ function drawRainfall() {
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, state.opacity));
   ctx.imageSmoothingEnabled = true;
-  // INCREASED BLUR TO 1.3px TO COMPLETELY ELIMINATE GRAIN TEXTURE
-  ctx.filter = "blur(1.3px)";
+  ctx.filter = "none"; // Removed heavy blur filter to guarantee zero lag
 
   source.points.forEach(point => {
     const lat = Number(point.lat);
@@ -757,6 +757,7 @@ function drawRainfall() {
     const cellNW = state.map.latLngToContainerPoint([cellNorth, cellWest]);
     const cellSE = state.map.latLngToContainerPoint([cellSouth, cellEast]);
 
+    // Viewport Culling - skips off-screen grid tiles completely
     if (
       Math.max(cellNW.x, cellSE.x) < -20 || 
       Math.min(cellNW.x, cellSE.x) > w + 20 ||
@@ -790,8 +791,8 @@ function drawRainfall() {
         if (!color) continue;
 
         ctx.fillStyle = color;
-        // Added +2px overlap to permanently seal any sub-pixel mesh lines
-        ctx.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(subPxW) + 2, Math.ceil(subPxH) + 2);
+        // Slight box overlap to eliminate grid lines without performance overhead
+        ctx.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(subPxW) + 1.2, Math.ceil(subPxH) + 1.2);
       }
     }
   });
