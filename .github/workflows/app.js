@@ -6,19 +6,15 @@ const INDIA_BOUNDS = L.latLngBounds(
 );
 
 const levels = [
-  0.1, 1, 2, 3, 5, 7, 10, 15, 20, 25, 30, 40,
-  50, 60, 70, 80, 90, 100, 125, 150, 175, 200,
-  250, 300, 400, 500, 600, 800
+  0.1, 1, 5, 10, 25, 50, 100, 200
 ];
 
+// Target-map rainfall palette: stepped weather-radar bands with
+// light/deep blue -> green -> yellow -> orange -> red.
 const colors = [
-  "#f2f2f2", "#c7dcff", "#8ebfff", "#4aa3ff",
-  "#007cff", "#004b99", "#1b5e20", "#00c853",
-  "#64dd17", "#c6ff00", "#ffd600", "#ffab00",
-  "#ff6d00", "#ff8f00", "#ff5c8a", "#ff1f5b",
-  "#ff0033", "#d50000", "#7b1fa2", "#6a00ff",
-  "#c000ff", "#d580ff", "#f0ccff", "#d9d9d9",
-  "#a6a6a6", "#7a7a7a", "#4d4d4d", "#333333"
+  "#d7eaff", "#72aef5", "#2f80d9", "#1f9d39",
+  "#42d62f", "#d8ef2f", "#ffe83b", "#ffb52e",
+  "#ff7a22", "#ed3b24", "#b80f14"
 ];
 
 const state = {
@@ -42,7 +38,7 @@ const state = {
 // - bilinear interpolation across the 0.5° display grid
 // - stepped colour levels, so rainfall bands stay crisp
 // - redraws at the current map viewport, so zooming does not scale a tiny raster
-const RAIN_CELL_SAMPLING = "bilinear";
+const RAIN_CELL_SAMPLING = "nearest";
 const RAIN_RENDER_STEP = 1;
 const WIND_GRID_SPACING_DEG = 2.0;
 const WIND_MIN_KNOTS = 3;
@@ -314,9 +310,12 @@ function setupMap() {
     worldCopyJump: false,
   });
 
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  // Light CARTO Voyager basemap closely matches the target reference:
+  // pale land, light-blue water, subtle roads and clear place labels.
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
     maxZoom: 19,
-    attribution: "© OpenStreetMap contributors",
+    subdomains: "abcd",
+    attribution: "© OpenStreetMap contributors © CARTO",
   }).addTo(state.map);
 
   state.map.fitBounds(INDIA_BOUNDS, { padding: [18, 18] });
@@ -334,23 +333,17 @@ function setupMap() {
 }
 
 function colorAt(value) {
-  if (!Number.isFinite(value) || value < 1) return null;
+  if (!Number.isFinite(value) || value < levels[0]) return null;
 
-  // Bilinear rainfall values are continuous. Keep the published rainfall
-  // thresholds, but blend only between adjacent threshold colours so the
-  // field does not turn into visible square blocks at the 0.5° grid scale.
-  if (value >= levels[levels.length - 1]) return colors[colors.length - 1];
+  // Deliberately use hard rainfall bands. The reference map has
+  // blocky, model-tile/radar-like precipitation rather than a
+  // continuously interpolated colour field.
+  let idx = 0;
+  while (idx < levels.length - 1 && value >= levels[idx + 1]) idx++;
 
-  let i = 0;
-  while (i < levels.length - 2 && value >= levels[i + 1]) i++;
-
-  const lo = levels[i];
-  const hi = levels[i + 1];
-  const t = hi > lo ? (value - lo) / (hi - lo) : 0;
-  const a = hexToRgb(colors[i]);
-  const b = hexToRgb(colors[i + 1]);
-
-  return `#${[0,1,2].map(k => Math.round(a[k] + (b[k] - a[k]) * t).toString(16).padStart(2, "0")).join("")}`;
+  // Extra high-end bands keep the heavy-rain core in orange/red.
+  if (value >= 200) return colors[colors.length - 1];
+  return colors[Math.min(idx, colors.length - 1)];
 }
 
 function buildSourceGrid() {
@@ -453,6 +446,26 @@ function bilinearAifsRain(grid, lat, lon, model, dayIndex) {
   const nearest = nearestPoint(grid, lat, lon);
   const v = nearest?.aifs?.[model]?.[dayIndex];
   return Number.isFinite(v) ? v : null;
+}
+
+function nearestModelRain(grid, lat, lon, model, dayIndex) {
+  const point = nearestPoint(grid, lat, lon);
+  const value = point?.models?.[model]?.rain?.[dayIndex];
+  return Number.isFinite(value) ? value : null;
+}
+
+function nearestBlendedRain(grid, lat, lon, dayIndex, models) {
+  const vals = models
+    .map(model => nearestModelRain(grid, lat, lon, model, dayIndex))
+    .filter(v => Number.isFinite(v));
+  if (!vals.length) return null;
+  return vals.reduce((a,b) => a + b, 0) / vals.length;
+}
+
+function nearestAifsRain(grid, lat, lon, model, dayIndex) {
+  const point = nearestPoint(grid, lat, lon);
+  const value = point?.aifs?.[model]?.[dayIndex];
+  return Number.isFinite(value) ? value : null;
 }
 
 function rainValueAt(grid, lat, lon, dayIndex) {
@@ -659,8 +672,8 @@ function drawRainfall() {
       ) continue;
 
       const value = state.rainSet === "aifs"
-        ? bilinearAifsRain(source, lat, lng, state.aifsModel, state.selectedDay)
-        : blendedRain(source, lat, lng, state.selectedDay, models);
+        ? nearestAifsRain(source, lat, lng, state.aifsModel, state.selectedDay)
+        : nearestBlendedRain(source, lat, lng, state.selectedDay, models);
       const color = colorAt(value);
       if (!color) continue;
 
@@ -814,10 +827,12 @@ function buildLegend() {
     ? `AIFS Set — ${escapeHtml(state.aifsModel)}`
     : "Standard model blend";
   legend.innerHTML =
-    `<div class="legend-title">24-hour rainfall (mm) — ${sourceText}</div>` +
+    `<div class="legend-title">6-hour rainfall (mm) — ${sourceText}</div>` +
+    `<div class="legend-scale">` +
     levels.map((v,i) =>
-      `<span class="legend-item"><i style="background:${colors[i]}"></i>${v}</span>`
-    ).join("");
+      `<span class="legend-item"><i style="background:${colors[Math.min(i, colors.length - 1)]}"></i>${v}</span>`
+    ).join("") +
+    `</div>`;
 }
 
 async function loadData() {
