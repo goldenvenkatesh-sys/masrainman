@@ -320,14 +320,20 @@ function setupMap() {
   }).addTo(state.map);
 
   state.map.fitBounds(INDIA_BOUNDS, { padding: [18, 18] });
-  state.map.on("zoomend moveend resize", scheduleRender);
+  state.map.on("zoomend moveend resize", () => {
+    state.map.invalidateSize({ pan: false });
+    scheduleRender();
+  });
   setupRainfallHover();
 
   const map = document.getElementById("map");
   if (map) {
     const ro = new ResizeObserver(() => {
       state.map.invalidateSize({ pan: false });
-      scheduleRender();
+      requestAnimationFrame(() => {
+        state.map.invalidateSize({ pan: false });
+        scheduleRender();
+      });
     });
     ro.observe(map);
   }
@@ -607,21 +613,32 @@ function makeCanvas() {
     state.canvas.style.position = "absolute";
     state.canvas.style.left = "0";
     state.canvas.style.top = "0";
+    state.canvas.style.width = "100%";
+    state.canvas.style.height = "100%";
+    state.canvas.style.display = "block";
     state.canvas.style.pointerEvents = "none";
     state.canvas.style.zIndex = "450";
     state.canvas.style.opacity = String(state.opacity);
     mapEl.appendChild(state.canvas);
   }
 
-  const w = Math.max(1, mapEl.clientWidth);
-  const h = Math.max(1, mapEl.clientHeight);
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  state.canvas.width = Math.round(w * dpr);
-  state.canvas.height = Math.round(h * dpr);
+  // Use Leaflet's actual map size and a 1:1 canvas backing store.
+  // Do not use devicePixelRatio here: putImageData works in backing-store
+  // pixels and DPR scaling was causing the rainfall field to occupy only
+  // part of the map on high-DPI mobile browsers.
+  const size = state.map ? state.map.getSize() : { x: mapEl.clientWidth, y: mapEl.clientHeight };
+  const w = Math.max(1, Math.round(size.x));
+  const h = Math.max(1, Math.round(size.y));
+
+  if (state.canvas.width !== w || state.canvas.height !== h) {
+    state.canvas.width = w;
+    state.canvas.height = h;
+  }
+
   state.canvas.style.width = `${w}px`;
   state.canvas.style.height = `${h}px`;
   state.ctx = state.canvas.getContext("2d", { alpha: true });
-  state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  state.ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 function drawRainfall() {
@@ -631,15 +648,21 @@ function drawRainfall() {
   const canvas = state.canvas;
   if (!ctx || !canvas) return;
 
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
+  const mapSize = state.map.getSize();
+  const w = Math.max(1, Math.round(mapSize.x));
+  const h = Math.max(1, Math.round(mapSize.y));
   const models = [...state.selectedModels];
   ctx.clearRect(0, 0, w, h);
   if (state.rainSet === "standard" && !models.length) return;
 
   const source = buildSourceGrid();
   const step = RAIN_RENDER_STEP;
-  const image = ctx.createImageData(w, h);
+  if (!state.rainBuffer) state.rainBuffer = document.createElement("canvas");
+  const buffer = state.rainBuffer;
+  if (buffer.width !== w || buffer.height !== h) { buffer.width = w; buffer.height = h; }
+  const bctx = buffer.getContext("2d", { alpha: true });
+  bctx.clearRect(0, 0, w, h);
+  const image = bctx.createImageData(w, h);
 
   for (let y = 0; y < h; y += step) {
     for (let x = 0; x < w; x += step) {
@@ -672,11 +695,13 @@ function drawRainfall() {
     }
   }
 
-  // Put the rainfall field directly onto the current-size canvas.
-  // The field is interpolated from the 0.5° model grid, but colours remain
-  // stepped. This avoids large square pixels while keeping a crisp model-grid look.
+  // Put the complete CSS-sized rainfall field into a buffer first.
+  // Then draw that buffer onto the high-DPI visible canvas. This is important
+  // on phones: putImageData() ignores the DPR transform and previously caused
+  // the rainfall field to occupy only part of the retina backing store.
+  bctx.putImageData(image, 0, 0);
   ctx.imageSmoothingEnabled = false;
-  ctx.putImageData(image, 0, 0);
+  ctx.drawImage(buffer, 0, 0, w, h);
 
   if (state.windEnabled) {
     drawWindBarbs(ctx, source, w, h);
@@ -824,6 +849,26 @@ async function loadData() {
   updateHeader();
   buildLegend();
   drawRainfall();
+}
+
+window.addEventListener("resize", () => {
+  if (!state.map) return;
+  state.map.invalidateSize({ pan: false });
+  scheduleRender();
+});
+window.addEventListener("orientationchange", () => {
+  setTimeout(() => {
+    if (!state.map) return;
+    state.map.invalidateSize({ pan: false });
+    scheduleRender();
+  }, 250);
+});
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", () => {
+    if (!state.map) return;
+    state.map.invalidateSize({ pan: false });
+    scheduleRender();
+  });
 }
 
 setupMap();
