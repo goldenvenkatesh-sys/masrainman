@@ -332,7 +332,9 @@ function setupMap() {
   }).addTo(state.map);
 
   addReferenceBoundaries();
-  state.map.fitBounds(INDIA_BOUNDS, { padding: [8, 8] });
+  
+  // Robust initial fit bounds for Pan India framing
+  state.map.fitBounds(INDIA_BOUNDS, { padding: [10, 10], animate: false });
   
   state.map.on("movestart", () => {
     panStartPoint = state.map.getPixelBounds().min;
@@ -712,7 +714,6 @@ function makeCanvas() {
   state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-// ADAPTIVE PERFORMANCE RENDERING: Instant load on startup, high-detail when zoomed in
 function drawRainfall() {
   if (!state.data || !state.map) return;
   makeCanvas();
@@ -732,13 +733,12 @@ function drawRainfall() {
   const halfLat = latStep / 2;
   const halfLon = lonStep / 2;
 
-  // Automatically adjust resolution based on zoom level to ensure zero startup lag
   const zoom = state.map.getZoom();
-  let displayStep = 0.125; // Coarse & lightning-fast when viewing full Pan-India on startup
+  let displayStep = 0.125; 
   if (zoom >= 7) {
-    displayStep = 0.035;   // High-detail smooth curves when zoomed into state level
+    displayStep = 0.035;   
   } else if (zoom === 6) {
-    displayStep = 0.06;    // Medium detail
+    displayStep = 0.06;    
   }
 
   const subRows = Math.max(1, Math.round(latStep / displayStep));
@@ -764,7 +764,6 @@ function drawRainfall() {
     const cellNW = state.map.latLngToContainerPoint([cellNorth, cellWest]);
     const cellSE = state.map.latLngToContainerPoint([cellSouth, cellEast]);
 
-    // Viewport Culling - skips off-screen grid tiles completely
     if (
       Math.max(cellNW.x, cellSE.x) < -20 || 
       Math.min(cellNW.x, cellSE.x) > w + 20 ||
@@ -953,7 +952,7 @@ async function loadData() {
   
   setTimeout(() => {
     state.map.invalidateSize();
-    state.map.fitBounds(INDIA_BOUNDS, { padding: [10, 10] });
+    state.map.fitBounds(INDIA_BOUNDS, { padding: [10, 10], animate: false });
     drawRainfall();
   }, 250);
 }
