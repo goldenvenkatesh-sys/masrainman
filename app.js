@@ -765,6 +765,9 @@ function drawRainfall() {
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, state.opacity));
   ctx.imageSmoothingEnabled = false;
+  // Very light edge blur only on the rainfall fills. This softens the tiny
+  // 0.125° cell texture without turning the map into a blurry raster.
+  ctx.filter = "blur(0.35px)";
 
   source.points.forEach(point => {
     const lat = Number(point.lat);
@@ -805,6 +808,8 @@ function drawRainfall() {
     }
   });
 
+  // Do not blur wind barbs or any later canvas drawing.
+  ctx.filter = "none";
   ctx.restore();
 
   if (state.windEnabled) {
