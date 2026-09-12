@@ -2,57 +2,57 @@
 
 // Pan India geographic bounds
 const INDIA_BOUNDS = L.latLngBounds(
-  [6.5, 68.0],
-  [37.5, 97.5]
+[6.5, 68.0],
+[37.5, 97.5]
 );
 
 const levels = [
-  0.1, 0.3, 0.5, 1, 2, 3, 5, 7, 10, 15, 20, 25,
-  30, 35, 40, 45, 50, 60, 70, 80, 100, 150, 200, 300
+0.1, 0.3, 0.5, 1, 2, 3, 5, 7, 10, 15, 20, 25,
+30, 35, 40, 45, 50, 60, 70, 80, 100, 150, 200, 300
 ];
 
 const colors = [
-  "#ffffff", // 0.1
-  "#ddd9ff", // 0.3
-  "#c6d4ff", // 0.5
-  "#a8c8f0", // 1
-  "#76a9dc", // 2
-  "#5b96d1", // 3
-  "#2679b9", // 5
-  "#1768a5", // 7
-  "#167a9f", // 10
-  "#188b45", // 15
-  "#35a843", // 20
-  "#73c53f", // 25
-  "#a8d62f", // 30
-  "#d8e82b", // 35
-  "#ffe51f", // 40
-  "#ffc21c", // 45
-  "#ff9e16", // 50
-  "#f47b16", // 60
-  "#e94b18", // 70
-  "#d72a1d", // 80
-  "#c51f50", // 100
-  "#e2477a", // 150
-  "#f080a0", // 200
-  "#6b6b6b"  // 300+
+"#ffffff", // 0.1
+"#ddd9ff", // 0.3
+"#c6d4ff", // 0.5
+"#a8c8f0", // 1
+"#76a9dc", // 2
+"#5b96d1", // 3
+"#2679b9", // 5
+"#1768a5", // 7
+"#167a9f", // 10
+"#188b45", // 15
+"#35a843", // 20
+"#73c53f", // 25
+"#a8d62f", // 30
+"#d8e82b", // 35
+"#ffe51f", // 40
+"#ffc21c", // 45
+"#ff9e16", // 50
+"#f47b16", // 60
+"#e94b18", // 70
+"#d72a1d", // 80
+"#c51f50", // 100
+"#e2477a", // 150
+"#f080a0", // 200
+"#6b6b6b"  // 300+
 ];
 
 const state = {
-  data: null,
-  map: null,
-  canvas: null,
-  ctx: null,
-  renderFrame: 0,
-  opacity: 0.8,
-  selectedDay: 0,
-  selectedModels: new Set(["ECMWF HRES", "GEM", "GFS", "ICON"]),
-  windEnabled: false,
-  windSource: "blend",
-  rainSet: "standard",
-  aifsModel: "ECMWF AIFS",
-  hoverRaf: 0,
-  hoverPoint: null,
+data: null,
+map: null,
+canvas: null,
+ctx: null,
+renderFrame: 0,
+opacity: 0.8,
+selectedDay: 0,
+selectedModels: new Set(["ECMWF HRES", "GEM", "GFS", "ICON"]),
+windEnabled: false,
+windSource: "blend",
+rainSet: "standard",
+aifsModel: "ECMWF AIFS",
+hoverRaf: 0,
+hoverPoint: null,
 };
 
 const WIND_GRID_SPACING_DEG = 2.0;
@@ -62,67 +62,65 @@ let panStartPoint = null;
 function $(id) { return document.getElementById(id); }
 
 function ensureUi() {
-  const aside = document.querySelector("aside");
-  if (!aside) return;
+const aside = document.querySelector("aside");
+if (!aside) return;
 
-  const oldPeriod = $("period");
-  if (oldPeriod) {
-    oldPeriod.innerHTML = "";
-    for (let i = 0; i < 12; i++) {
-      const opt = document.createElement("option");
-      opt.value = String(i);
-      opt.textContent = `Day ${i + 1}`;
-      oldPeriod.appendChild(opt);
-    }
-  }
+const oldPeriod = $("period");
+if (oldPeriod) {
+oldPeriod.innerHTML = "";
+for (let i = 0; i < 12; i++) {
+const opt = document.createElement("option");
+opt.value = String(i);
+opt.textContent = Day ${i + 1};
+oldPeriod.appendChild(opt);
+}
+}
 
-  const heading = document.querySelector("header h1");
-  if (heading) heading.textContent = "24-Hour Rainfall Forecast";
+const heading = document.querySelector("header h1");
+if (heading) heading.textContent = "24-Hour Rainfall Forecast";
 
-  if (!$("runDetails")) {
-    const details = document.createElement("div");
-    details.id = "runDetails";
-    details.className = "run-details";
-    details.innerHTML = `
-      <div class="run-details-title">Model Run & Valid Time</div>
+if (!$("runDetails")) {
+const details = document.createElement("div");
+details.id = "runDetails";
+details.className = "run-details";
+details.innerHTML =       <div class="run-details-title">Model Run & Valid Time</div>
       <div id="runInfo">Loading…</div>
-    `;
-    const noteEl = aside.querySelector(".note");
-    if (noteEl) aside.insertBefore(details, noteEl);
-    else aside.appendChild(details);
-  }
+   ;
+const noteEl = aside.querySelector(".note");
+if (noteEl) aside.insertBefore(details, noteEl);
+else aside.appendChild(details);
+}
 
-  const aifsModels = state.data?.aifs_models || [
-    "ECMWF AIFS",
-    "NOAA AIGFS",
-    "ECMWF IFS",
-    "Google WeatherNext 2"
-  ];
-  const aifsSelect = $("aifsModel");
-  if (aifsSelect) {
-    aifsSelect.innerHTML = "";
-    aifsModels.forEach(model => {
-      const opt = document.createElement("option");
-      opt.value = model;
-      opt.textContent = model;
-      aifsSelect.appendChild(opt);
-    });
-    aifsSelect.value = state.aifsModel;
-  }
+const aifsModels = state.data?.aifs_models || [
+"ECMWF AIFS",
+"NOAA AIGFS",
+"ECMWF IFS",
+"Google WeatherNext 2"
+];
+const aifsSelect = $("aifsModel");
+if (aifsSelect) {
+aifsSelect.innerHTML = "";
+aifsModels.forEach(model => {
+const opt = document.createElement("option");
+opt.value = model;
+opt.textContent = model;
+aifsSelect.appendChild(opt);
+});
+aifsSelect.value = state.aifsModel;
+}
 
-  const note = aside.querySelector(".note");
-  if (note) {
-    note.innerHTML =
-      "Rainfall is accumulated for each forecast day. " +
-      "Rainfall display uses smooth bilinear sampling. " +
-      "850 hPa wind barbs use 12 UTC representative wind.";
-  }
+const note = aside.querySelector(".note");
+if (note) {
+note.innerHTML =
+"Rainfall is accumulated for each forecast day. " +
+"Rainfall display uses smooth bilinear sampling. " +
+"850 hPa wind barbs use 12 UTC representative wind.";
+}
 
-  if (!$('windControls')) {
-    const box = document.createElement("div");
-    box.id = "windControls";
-    box.innerHTML = `
-      <hr>
+if (!$('windControls')) {
+const box = document.createElement("div");
+box.id = "windControls";
+box.innerHTML =       <hr>
       <label class="wind-toggle">
         <input type="checkbox" id="wind850">
         850 hPa Wind Barbs
@@ -138,832 +136,836 @@ function ensureUi() {
         </select>
       </label>
       <div class="wind-note">850 hPa ≈ 1.5 km. Barbs show wind from direction; speed in knots.</div>
-    `;
-    aside.appendChild(box);
-  }
+   ;
+aside.appendChild(box);
+}
 }
 
 function updateWindControls() {
-  const wind = $("wind850");
-  const wrap = $("windSourceWrap");
-  if (!wind || !wrap) return;
-  if (state.rainSet === "aifs") {
-    wind.checked = false;
-    wind.disabled = true;
-    state.windEnabled = false;
-    wrap.style.display = "none";
-  } else {
-    wind.disabled = false;
-  }
+const wind = $("wind850");
+const wrap = $("windSourceWrap");
+if (!wind || !wrap) return;
+if (state.rainSet === "aifs") {
+wind.checked = false;
+wind.disabled = true;
+state.windEnabled = false;
+wrap.style.display = "none";
+} else {
+wind.disabled = false;
+}
 }
 
 function getSelectedModels() {
-  const boxes = document.querySelectorAll("input.model");
-  const selected = [];
-  boxes.forEach(box => {
-    if (box.checked) selected.push(box.value);
-  });
-  state.selectedModels = new Set(selected);
-  return selected;
+const boxes = document.querySelectorAll("input.model");
+const selected = [];
+boxes.forEach(box => {
+if (box.checked) selected.push(box.value);
+});
+state.selectedModels = new Set(selected);
+return selected;
 }
 
 function setupControls() {
-  document.querySelectorAll("input.model").forEach(box => {
-    box.addEventListener("change", () => {
-      getSelectedModels();
-      scheduleRender();
-    });
-  });
+document.querySelectorAll("input.model").forEach(box => {
+box.addEventListener("change", () => {
+getSelectedModels();
+scheduleRender();
+});
+});
 
-  document.querySelectorAll("input[name=rainSet]").forEach(box => {
-    box.addEventListener("change", () => {
-      state.rainSet = box.value;
-      const wrap = $("aifsModelWrap");
-      if (wrap) wrap.style.display = state.rainSet === "aifs" ? "block" : "none";
-      updateHeader();
-      updateWindControls();
-      scheduleRender();
-    });
-  });
+document.querySelectorAll("input[name=rainSet]").forEach(box => {
+box.addEventListener("change", () => {
+state.rainSet = box.value;
+const wrap = $("aifsModelWrap");
+if (wrap) wrap.style.display = state.rainSet === "aifs" ? "block" : "none";
+updateHeader();
+updateWindControls();
+scheduleRender();
+});
+});
 
-  const aifsModel = $("aifsModel");
-  if (aifsModel) {
-    aifsModel.addEventListener("change", () => {
-      state.aifsModel = aifsModel.value;
-      updateHeader();
-      scheduleRender();
-    });
-  }
+const aifsModel = $("aifsModel");
+if (aifsModel) {
+aifsModel.addEventListener("change", () => {
+state.aifsModel = aifsModel.value;
+updateHeader();
+scheduleRender();
+});
+}
 
-  const day = $("period");
-  if (day) {
-    day.addEventListener("change", () => {
-      state.selectedDay = Number(day.value) || 0;
-      updateHeader();
-      scheduleRender();
-    });
-  }
+const day = $("period");
+if (day) {
+day.addEventListener("change", () => {
+state.selectedDay = Number(day.value) || 0;
+updateHeader();
+scheduleRender();
+});
+}
 
-  const opacity = $("opacity");
-  if (opacity) {
-    state.opacity = Number(opacity.value) || 0.8;
-    opacity.addEventListener("input", () => {
-      state.opacity = Number(opacity.value) || 0.8;
-      if (state.canvas) state.canvas.style.opacity = String(state.opacity);
-    });
-  }
+const opacity = $("opacity");
+if (opacity) {
+state.opacity = Number(opacity.value) || 0.8;
+opacity.addEventListener("input", () => {
+state.opacity = Number(opacity.value) || 0.8;
+if (state.canvas) state.canvas.style.opacity = String(state.opacity);
+});
+}
 
-  const wind = $("wind850");
-  if (wind) {
-    wind.addEventListener("change", () => {
-      state.windEnabled = wind.checked;
-      const wrap = $("windSourceWrap");
-      if (wrap) wrap.style.display = wind.checked ? "block" : "none";
-      scheduleRender();
-    });
-  }
+const wind = $("wind850");
+if (wind) {
+wind.addEventListener("change", () => {
+state.windEnabled = wind.checked;
+const wrap = $("windSourceWrap");
+if (wrap) wrap.style.display = wind.checked ? "block" : "none";
+scheduleRender();
+});
+}
 
-  const windSource = $("windSource");
-  if (windSource) {
-    windSource.addEventListener("change", () => {
-      state.windSource = windSource.value;
-      scheduleRender();
-    });
-  }
+const windSource = $("windSource");
+if (windSource) {
+windSource.addEventListener("change", () => {
+state.windSource = windSource.value;
+scheduleRender();
+});
+}
 }
 
 function getRunTimestamp() {
-  if (!state.data || !state.data.updated) return null;
-  const updated = new Date(state.data.updated);
-  if (Number.isNaN(updated.getTime())) return null;
+if (!state.data || !state.data.updated) return null;
+const updated = new Date(state.data.updated);
+if (Number.isNaN(updated.getTime())) return null;
 
-  const run = new Date(updated.getTime());
-  run.setUTCMinutes(0, 0, 0);
-  run.setUTCHours(Math.floor(run.getUTCHours() / 6) * 6);
-  return run;
+const run = new Date(updated.getTime());
+run.setUTCMinutes(0, 0, 0);
+run.setUTCHours(Math.floor(run.getUTCHours() / 6) * 6);
+return run;
 }
 
 function getValidDayRange(dayIndex) {
-  if (state.data && state.data.valid_days && state.data.valid_days[dayIndex]) {
-    return state.data.valid_days[dayIndex];
-  }
-  const run = getRunTimestamp();
-  if (!run) return null;
-  const start = new Date(run.getTime() + dayIndex * 86400000);
-  const end = new Date(start.getTime() + 86400000);
-  return { start: start.toISOString(), end: end.toISOString() };
+if (state.data && state.data.valid_days && state.data.valid_days[dayIndex]) {
+return state.data.valid_days[dayIndex];
+}
+const run = getRunTimestamp();
+if (!run) return null;
+const start = new Date(run.getTime() + dayIndex * 86400000);
+const end = new Date(start.getTime() + 86400000);
+return { start: start.toISOString(), end: end.toISOString() };
 }
 
 function formatIST(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).replace(",", " / ");
+const d = new Date(iso);
+if (Number.isNaN(d.getTime())) return "—";
+return d.toLocaleString("en-IN", {
+timeZone: "Asia/Kolkata",
+day: "2-digit",
+month: "short",
+year: "numeric",
+hour: "2-digit",
+minute: "2-digit",
+hour12: false,
+}).replace(",", " / ");
 }
 
 function updateHeader() {
-  const time = $("time");
-  if (!time || !state.data) return;
+const time = $("time");
+if (!time || !state.data) return;
 
-  const run = getRunTimestamp();
-  const range = getValidDayRange(state.selectedDay);
-  const runText = run
-    ? `${run.toLocaleDateString("en-GB", {day:"2-digit", month:"short", year:"numeric", timeZone:"UTC"})} / ${String(run.getUTCHours()).padStart(2,"0")}Z`
-    : "—";
+const run = getRunTimestamp();
+const range = getValidDayRange(state.selectedDay);
+const runText = run
+? ${run.toLocaleDateString("en-GB", {day:"2-digit", month:"short", year:"numeric", timeZone:"UTC"})} / ${String(run.getUTCHours()).padStart(2,"0")}Z
+: "—";
 
-  let validText = "—";
-  if (range) {
-    validText = `${formatIST(range.start)} IST – ${formatIST(range.end)} IST`;
-  }
+let validText = "—";
+if (range) {
+validText = ${formatIST(range.start)} IST – ${formatIST(range.end)} IST;
+}
 
-  const sourceText = state.rainSet === "aifs"
-    ? `AIFS Set — ${state.aifsModel}`
-    : "Standard model blend";
-  time.innerHTML = `<b>Model Run:</b> ${runText} &nbsp; | &nbsp; <b>Valid:</b> Day ${state.selectedDay + 1} &nbsp; ${validText} &nbsp; | &nbsp; <b>Source:</b> ${escapeHtml(sourceText)}`;
+const sourceText = state.rainSet === "aifs"
+? AIFS Set — ${state.aifsModel}
+: "Standard model blend";
+time.innerHTML = <b>Model Run:</b> ${runText} &nbsp; | &nbsp; <b>Valid:</b> Day ${state.selectedDay + 1} &nbsp; ${validText} &nbsp; | &nbsp; <b>Source:</b> ${escapeHtml(sourceText)};
 
-  const runInfo = $("runInfo");
-  if (runInfo) {
-    const horizons = state.data.model_horizons || {};
-    const modelRows = (state.data.models || []).map(model => {
-      const days = horizons[model];
-      const available = Number.isFinite(days) ? `Day 1–${days}` : "Available";
-      return `<div class="run-model-row"><span>${escapeHtml(model)}</span><b>${available}</b></div>`;
-    }).join("");
+const runInfo = $("runInfo");
+if (runInfo) {
+const horizons = state.data.model_horizons || {};
+const modelRows = (state.data.models || []).map(model => {
+const days = horizons[model];
+const available = Number.isFinite(days) ? Day 1–${days} : "Available";
+return <div class="run-model-row"><span>${escapeHtml(model)}</span><b>${available}</b></div>;
+}).join("");
 
-    const aifsHorizons = state.data.aifs_model_horizons || {};
-    const aifsRows = (state.data.aifs_models || []).map(model => {
-      const days = aifsHorizons[model];
-      const available = Number.isFinite(days) ? `Day 1–${days}` : "Available";
-      return `<div class="run-model-row"><span>${escapeHtml(model)}</span><b>${available}</b></div>`;
-    }).join("");
+const aifsHorizons = state.data.aifs_model_horizons || {};
+const aifsRows = (state.data.aifs_models || []).map(model => {
+  const days = aifsHorizons[model];
+  const available = Number.isFinite(days) ? `Day 1–${days}` : "Available";
+  return `<div class="run-model-row"><span>${escapeHtml(model)}</span><b>${available}</b></div>`;
+}).join("");
 
-    runInfo.innerHTML =
-      `<div class="run-main"><span>Run</span><b>${runText}</b></div>` +
-      `<div class="run-main"><span>Valid period</span><b>Day ${state.selectedDay + 1}</b></div>` +
-      `<div class="run-valid">${validText}</div>` +
-      `<div class="run-subtitle">Standard model availability</div>` +
-      modelRows +
-      `<div class="run-subtitle">AIFS Set availability</div>` +
-      aifsRows;
-  }
+runInfo.innerHTML =
+  `<div class="run-main"><span>Run</span><b>${runText}</b></div>` +
+  `<div class="run-main"><span>Valid period</span><b>Day ${state.selectedDay + 1}</b></div>` +
+  `<div class="run-valid">${validText}</div>` +
+  `<div class="run-subtitle">Standard model availability</div>` +
+  modelRows +
+  `<div class="run-subtitle">AIFS Set availability</div>` +
+  aifsRows;
+
+}
 }
 
 function setupMap() {
-  state.map = L.map("map", {
-    zoomControl: true,
-    preferCanvas: true,
-    minZoom: 4,
-    maxZoom: 10,
-    worldCopyJump: false,
-  });
-  state.map.createPane("referenceBoundaries");
-  state.map.getPane("referenceBoundaries").style.zIndex = 650;
+state.map = L.map("map", {
+zoomControl: true,
+preferCanvas: true,
+minZoom: 4,
+maxZoom: 10,
+worldCopyJump: false,
+});
+state.map.createPane("referenceBoundaries");
+state.map.getPane("referenceBoundaries").style.zIndex = 650;
 
-  // White geographic background.
-  // OSM tiles are intentionally disabled so roads, terrain and land colors are removed.
-  // The existing India/Sri Lanka GeoJSON boundary layer remains visible.
-  state.map.getContainer().style.backgroundColor = "#ffffff";
+const base = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+maxZoom: 19,
+attribution: "© OpenStreetMap contributors",
+}).addTo(state.map);
 
-  addReferenceBoundaries();
-  state.map.fitBounds(INDIA_BOUNDS, { padding: [8, 8] });
-  
-  state.map.on("movestart", () => {
-    panStartPoint = state.map.getPixelBounds().min;
-  });
+addReferenceBoundaries();
+state.map.fitBounds(INDIA_BOUNDS, { padding: [8, 8] });
 
-  state.map.on("move", () => {
-    if (!state.canvas || !panStartPoint) return;
-    const current = state.map.getPixelBounds().min;
-    const x = panStartPoint.x - current.x;
-    const y = panStartPoint.y - current.y;
-    state.canvas.style.transform = `translate(${x}px, ${y}px)`;
-  });
+state.map.on("movestart", () => {
+panStartPoint = state.map.getPixelBounds().min;
+});
 
-  state.map.on("zoomstart", () => {
-    if (state.canvas) state.canvas.style.opacity = "0";
-  });
+state.map.on("move", () => {
+if (!state.canvas || !panStartPoint) return;
+const current = state.map.getPixelBounds().min;
+const x = panStartPoint.x - current.x;
+const y = panStartPoint.y - current.y;
+state.canvas.style.transform = translate(${x}px, ${y}px);
+});
 
-  state.map.on("moveend zoomend resize", () => {
-    if (state.canvas) {
-      state.canvas.style.transform = "translate(0px, 0px)";
-      state.canvas.style.opacity = String(state.opacity);
-    }
-    panStartPoint = null;
-    scheduleRender();
-  });
+state.map.on("zoomstart", () => {
+if (state.canvas) state.canvas.style.opacity = "0";
+});
 
-  setupRainfallHover();
+state.map.on("moveend zoomend resize", () => {
+if (state.canvas) {
+state.canvas.style.transform = "translate(0px, 0px)";
+state.canvas.style.opacity = String(state.opacity);
+}
+panStartPoint = null;
+scheduleRender();
+});
 
-  const map = document.getElementById("map");
-  if (map) {
-    const ro = new ResizeObserver(() => {
-      state.map.invalidateSize({ pan: false });
-      scheduleRender();
-    });
-    ro.observe(map);
-  }
+setupRainfallHover();
+
+const map = document.getElementById("map");
+if (map) {
+const ro = new ResizeObserver(() => {
+state.map.invalidateSize({ pan: false });
+scheduleRender();
+});
+ro.observe(map);
+}
 }
 
 let boundaryLayer = null;
 
 async function addReferenceBoundaries() {
-  try {
-    const [indiaRes, sriRes] = await Promise.all([
-      fetch("https://raw.githubusercontent.com/india-in-data/india-states-2019/master/india_states.geojson", { cache: "force-cache" }),
-      fetch("https://raw.githubusercontent.com/glynnbird/countriesgeojson/master/sri%20lanka.geojson", { cache: "force-cache" })
-    ]);
-    if (!indiaRes.ok || !sriRes.ok) throw new Error("Boundary data unavailable");
+try {
+const [indiaRes, sriRes] = await Promise.all([
+fetch("https://raw.githubusercontent.com/india-in-data/india-states-2019/master/india_states.geojson", { cache: "force-cache" }),
+fetch("https://raw.githubusercontent.com/glynnbird/countriesgeojson/master/sri%20lanka.geojson", { cache: "force-cache" })
+]);
+if (!indiaRes.ok || !sriRes.ok) throw new Error("Boundary data unavailable");
 
-    const india = await indiaRes.json();
-    const sriLanka = await sriRes.json();
+const india = await indiaRes.json();
+const sriLanka = await sriRes.json();
 
-    boundaryLayer = L.layerGroup();
+boundaryLayer = L.layerGroup();
 
-    L.geoJSON(india, {
-      pane: "referenceBoundaries",
-      interactive: false,
-      style: {
-        color: "#34383d",
-        weight: 1.15,
-        opacity: 0.92,
-        fill: false
-      }
-    }).addTo(boundaryLayer);
-
-    L.geoJSON(sriLanka, {
-      pane: "referenceBoundaries",
-      interactive: false,
-      style: {
-        color: "#20252a",
-        weight: 1.8,
-        opacity: 0.98,
-        fill: false
-      }
-    }).addTo(boundaryLayer);
-
-    boundaryLayer.addTo(state.map);
-    boundaryLayer.bringToFront();
-    scheduleRender();
-  } catch (err) {
-    console.warn("Reference boundary overlay unavailable:", err);
+L.geoJSON(india, {
+  pane: "referenceBoundaries",
+  interactive: false,
+  style: {
+    color: "#34383d",
+    weight: 1.15,
+    opacity: 0.92,
+    fill: false
   }
+}).addTo(boundaryLayer);
+
+L.geoJSON(sriLanka, {
+  pane: "referenceBoundaries",
+  interactive: false,
+  style: {
+    color: "#20252a",
+    weight: 1.8,
+    opacity: 0.98,
+    fill: false
+  }
+}).addTo(boundaryLayer);
+
+boundaryLayer.addTo(state.map);
+boundaryLayer.bringToFront();
+scheduleRender();
+
+} catch (err) {
+console.warn("Reference boundary overlay unavailable:", err);
+}
 }
 
 function colorAt(value) {
-  if (!Number.isFinite(value) || value < 1) return null; 
-  
-  let idx = 3; 
-  while (idx < levels.length - 1 && value >= levels[idx + 1]) idx++;
-  
-  return colors[Math.min(idx, colors.length - 1)];
+if (!Number.isFinite(value) || value < 1) return null;
+
+let idx = 3;
+while (idx < levels.length - 1 && value >= levels[idx + 1]) idx++;
+
+return colors[Math.min(idx, colors.length - 1)];
 }
 
 function buildSourceGrid() {
-  const grid = state.data.grid || [];
-  const cols = new Set();
-  const map = new Map();
-  grid.forEach(p => {
-    cols.add(p.lon);
-    map.set(`${p.lat}|${p.lon}`, p);
-  });
-  const lats = [...new Set(grid.map(p => p.lat))].sort((a,b) => a-b);
-  const lons = [...cols].sort((a,b) => a-b);
-  return { lats, lons, map, points: grid };
+const grid = state.data.grid || [];
+const cols = new Set();
+const map = new Map();
+grid.forEach(p => {
+cols.add(p.lon);
+map.set(${p.lat}|${p.lon}, p);
+});
+const lats = [...new Set(grid.map(p => p.lat))].sort((a,b) => a-b);
+const lons = [...cols].sort((a,b) => a-b);
+return { lats, lons, map, points: grid };
 }
 
 function nearestPoint(grid, lat, lon) {
-  const { lats, lons, map } = grid;
-  if (!lats.length || !lons.length) return null;
-  const latStep = lats.length > 1 ? (lats[1] - lats[0]) : 0.5;
-  const lonStep = lons.length > 1 ? (lons[1] - lons[0]) : 0.5;
-  const latIndex = Math.max(0, Math.min(lats.length - 1, Math.round((lat - lats[0]) / latStep)));
-  const lonIndex = Math.max(0, Math.min(lons.length - 1, Math.round((lon - lons[0]) / lonStep)));
-  return map.get(`${lats[latIndex]}|${lons[lonIndex]}`) || null;
+const { lats, lons, map } = grid;
+if (!lats.length || !lons.length) return null;
+const latStep = lats.length > 1 ? (lats[1] - lats[0]) : 0.5;
+const lonStep = lons.length > 1 ? (lons[1] - lons[0]) : 0.5;
+const latIndex = Math.max(0, Math.min(lats.length - 1, Math.round((lat - lats[0]) / latStep)));
+const lonIndex = Math.max(0, Math.min(lons.length - 1, Math.round((lon - lons[0]) / lonStep)));
+return map.get(${lats[latIndex]}|${lons[lonIndex]}) || null;
 }
 
 function bracketPoint(grid, lat, lon) {
-  const { lats, lons, map } = grid;
-  if (lats.length < 2 || lons.length < 2) return null;
+const { lats, lons, map } = grid;
+if (lats.length < 2 || lons.length < 2) return null;
 
-  const latStep = lats[1] - lats[0];
-  const lonStep = lons[1] - lons[0];
-  const latPos = (lat - lats[0]) / latStep;
-  const lonPos = (lon - lons[0]) / lonStep;
+const latStep = lats[1] - lats[0];
+const lonStep = lons[1] - lons[0];
+const latPos = (lat - lats[0]) / latStep;
+const lonPos = (lon - lons[0]) / lonStep;
 
-  let i = Math.floor(latPos);
-  let j = Math.floor(lonPos);
-  i = Math.max(0, Math.min(lats.length - 2, i));
-  j = Math.max(0, Math.min(lons.length - 2, j));
+let i = Math.floor(latPos);
+let j = Math.floor(lonPos);
+i = Math.max(0, Math.min(lats.length - 2, i));
+j = Math.max(0, Math.min(lons.length - 2, j));
 
-  const fy = Math.max(0, Math.min(1, latPos - i));
-  const fx = Math.max(0, Math.min(1, lonPos - j));
+const fy = Math.max(0, Math.min(1, latPos - i));
+const fx = Math.max(0, Math.min(1, lonPos - j));
 
-  return {
-    p00: map.get(`${lats[i]}|${lons[j]}`),
-    p01: map.get(`${lats[i]}|${lons[j + 1]}`),
-    p10: map.get(`${lats[i + 1]}|${lons[j]}`),
-    p11: map.get(`${lats[i + 1]}|${lons[j + 1]}`),
-    fx, fy,
-  };
+return {
+p00: map.get(${lats[i]}|${lons[j]}),
+p01: map.get(${lats[i]}|${lons[j + 1]}),
+p10: map.get(${lats[i + 1]}|${lons[j]}),
+p11: map.get(${lats[i + 1]}|${lons[j + 1]}),
+fx, fy,
+};
 }
 
 function bilinearRain(grid, lat, lon, model, dayIndex) {
-  const b = bracketPoint(grid, lat, lon);
-  if (!b) return null;
+const b = bracketPoint(grid, lat, lon);
+if (!b) return null;
 
-  const vals = [
-    b.p00?.models?.[model]?.rain?.[dayIndex],
-    b.p01?.models?.[model]?.rain?.[dayIndex],
-    b.p10?.models?.[model]?.rain?.[dayIndex],
-    b.p11?.models?.[model]?.rain?.[dayIndex],
-  ];
+const vals = [
+b.p00?.models?.[model]?.rain?.[dayIndex],
+b.p01?.models?.[model]?.rain?.[dayIndex],
+b.p10?.models?.[model]?.rain?.[dayIndex],
+b.p11?.models?.[model]?.rain?.[dayIndex],
+];
 
-  if (vals.every(Number.isFinite)) {
-    const top = vals[0] * (1 - b.fx) + vals[1] * b.fx;
-    const bottom = vals[2] * (1 - b.fx) + vals[3] * b.fx;
-    return top * (1 - b.fy) + bottom * b.fy;
-  }
+if (vals.every(Number.isFinite)) {
+const top = vals[0] * (1 - b.fx) + vals[1] * b.fx;
+const bottom = vals[2] * (1 - b.fx) + vals[3] * b.fx;
+return top * (1 - b.fy) + bottom * b.fy;
+}
 
-  const nearest = nearestPoint(grid, lat, lon);
-  const v = nearest?.models?.[model]?.rain?.[dayIndex];
-  return Number.isFinite(v) ? v : null;
+const nearest = nearestPoint(grid, lat, lon);
+const v = nearest?.models?.[model]?.rain?.[dayIndex];
+return Number.isFinite(v) ? v : null;
 }
 
 function blendedRain(grid, lat, lon, dayIndex, models) {
-  const vals = models
-    .map(model => bilinearRain(grid, lat, lon, model, dayIndex))
-    .filter(v => Number.isFinite(v));
-  if (!vals.length) return null;
-  return vals.reduce((a,b) => a+b, 0) / vals.length;
+const vals = models
+.map(model => bilinearRain(grid, lat, lon, model, dayIndex))
+.filter(v => Number.isFinite(v));
+if (!vals.length) return null;
+return vals.reduce((a,b) => a+b, 0) / vals.length;
 }
 
 function bilinearAifsRain(grid, lat, lon, model, dayIndex) {
-  const b = bracketPoint(grid, lat, lon);
-  if (!b) return null;
-  const vals = [
-    b.p00?.aifs?.[model]?.[dayIndex],
-    b.p01?.aifs?.[model]?.[dayIndex],
-    b.p10?.aifs?.[model]?.[dayIndex],
-    b.p11?.aifs?.[model]?.[dayIndex],
-  ];
-  if (vals.every(Number.isFinite)) {
-    const top = vals[0] * (1 - b.fx) + vals[1] * b.fx;
-    const bottom = vals[2] * (1 - b.fx) + vals[3] * b.fx;
-    return top * (1 - b.fy) + bottom * b.fy;
-  }
-  const nearest = nearestPoint(grid, lat, lon);
-  const v = nearest?.aifs?.[model]?.[dayIndex];
-  return Number.isFinite(v) ? v : null;
+const b = bracketPoint(grid, lat, lon);
+if (!b) return null;
+const vals = [
+b.p00?.aifs?.[model]?.[dayIndex],
+b.p01?.aifs?.[model]?.[dayIndex],
+b.p10?.aifs?.[model]?.[dayIndex],
+b.p11?.aifs?.[model]?.[dayIndex],
+];
+if (vals.every(Number.isFinite)) {
+const top = vals[0] * (1 - b.fx) + vals[1] * b.fx;
+const bottom = vals[2] * (1 - b.fx) + vals[3] * b.fx;
+return top * (1 - b.fy) + bottom * b.fy;
+}
+const nearest = nearestPoint(grid, lat, lon);
+const v = nearest?.aifs?.[model]?.[dayIndex];
+return Number.isFinite(v) ? v : null;
 }
 
 function nearestModelRain(grid, lat, lon, model, dayIndex) {
-  const point = nearestPoint(grid, lat, lon);
-  const value = point?.models?.[model]?.rain?.[dayIndex];
-  return Number.isFinite(value) ? value : null;
+const point = nearestPoint(grid, lat, lon);
+const value = point?.models?.[model]?.rain?.[dayIndex];
+return Number.isFinite(value) ? value : null;
 }
 
 function nearestBlendedRain(grid, lat, lon, dayIndex, models) {
-  const vals = models
-    .map(model => nearestModelRain(grid, lat, lon, model, dayIndex))
-    .filter(v => Number.isFinite(v));
-  if (!vals.length) return null;
-  return vals.reduce((a,b) => a + b, 0) / vals.length;
+const vals = models
+.map(model => nearestModelRain(grid, lat, lon, model, dayIndex))
+.filter(v => Number.isFinite(v));
+if (!vals.length) return null;
+return vals.reduce((a,b) => a + b, 0) / vals.length;
 }
 
 function nearestAifsRain(grid, lat, lon, model, dayIndex) {
-  const point = nearestPoint(grid, lat, lon);
-  const value = point?.aifs?.[model]?.[dayIndex];
-  return Number.isFinite(value) ? value : null;
+const point = nearestPoint(grid, lat, lon);
+const value = point?.aifs?.[model]?.[dayIndex];
+return Number.isFinite(value) ? value : null;
 }
 
 function rainValueAt(grid, lat, lon, dayIndex) {
-  if (state.rainSet === "aifs") {
-    return bilinearAifsRain(grid, lat, lon, state.aifsModel, dayIndex);
-  }
-  return blendedRain(grid, lat, lon, dayIndex, [...state.selectedModels]);
+if (state.rainSet === "aifs") {
+return bilinearAifsRain(grid, lat, lon, state.aifsModel, dayIndex);
+}
+return blendedRain(grid, lat, lon, dayIndex, [...state.selectedModels]);
 }
 
 function windAtPoint(grid, lat, lon, dayIndex, source) {
-  const point = nearestPoint(grid, lat, lon);
-  if (!point || !point.models) return null;
+const point = nearestPoint(grid, lat, lon);
+if (!point || !point.models) return null;
 
-  const models = source === "blend"
-    ? [...state.selectedModels]
-    : [source];
+const models = source === "blend"
+? [...state.selectedModels]
+: [source];
 
-  let sumU = 0;
-  let sumV = 0;
-  let count = 0;
+let sumU = 0;
+let sumV = 0;
+let count = 0;
 
-  models.forEach(model => {
-    const entry = point.models[model];
-    if (!entry || !Array.isArray(entry.wind850)) return;
-    const uv = entry.wind850[dayIndex];
-    if (!uv || !Number.isFinite(uv[0]) || !Number.isFinite(uv[1])) return;
-    sumU += uv[0];
-    sumV += uv[1];
-    count++;
-  });
+models.forEach(model => {
+const entry = point.models[model];
+if (!entry || !Array.isArray(entry.wind850)) return;
+const uv = entry.wind850[dayIndex];
+if (!uv || !Number.isFinite(uv[0]) || !Number.isFinite(uv[1])) return;
+sumU += uv[0];
+sumV += uv[1];
+count++;
+});
 
-  if (!count) return null;
-  return {
-    u: sumU / count,
-    v: sumV / count,
-  };
+if (!count) return null;
+return {
+u: sumU / count,
+v: sumV / count,
+};
 }
 
 function setupRainfallHover() {
-  const mapEl = $("map");
-  if (!mapEl || state.map._rainHoverReady) return;
-  state.map._rainHoverReady = true;
+const mapEl = $("map");
+if (!mapEl || state.map._rainHoverReady) return;
+state.map._rainHoverReady = true;
 
-  let tooltip = $("rainTooltip");
-  if (!tooltip) {
-    tooltip = document.createElement("div");
-    tooltip.id = "rainTooltip";
-    tooltip.className = "rain-tooltip";
-    tooltip.style.display = "none";
-    mapEl.appendChild(tooltip);
-  }
+let tooltip = $("rainTooltip");
+if (!tooltip) {
+tooltip = document.createElement("div");
+tooltip.id = "rainTooltip";
+tooltip.className = "rain-tooltip";
+tooltip.style.display = "none";
+mapEl.appendChild(tooltip);
+}
 
-  mapEl.addEventListener("mousemove", (e) => {
-    state.hoverPoint = { x: e.offsetX, y: e.offsetY };
-    if (state.hoverRaf) return;
-    state.hoverRaf = requestAnimationFrame(() => {
-      state.hoverRaf = 0;
-      updateRainfallHover();
-    });
-  });
+mapEl.addEventListener("mousemove", (e) => {
+state.hoverPoint = { x: e.offsetX, y: e.offsetY };
+if (state.hoverRaf) return;
+state.hoverRaf = requestAnimationFrame(() => {
+state.hoverRaf = 0;
+updateRainfallHover();
+});
+});
 
-  mapEl.addEventListener("mouseleave", () => {
-    state.hoverPoint = null;
-    tooltip.style.display = "none";
-  });
+mapEl.addEventListener("mouseleave", () => {
+state.hoverPoint = null;
+tooltip.style.display = "none";
+});
 }
 
 function updateRainfallHover() {
-  const tooltip = $("rainTooltip");
-  if (!tooltip || !state.hoverPoint || !state.data || !state.map) return;
+const tooltip = $("rainTooltip");
+if (!tooltip || !state.hoverPoint || !state.data || !state.map) return;
 
-  const { x, y } = state.hoverPoint;
-  const geo = state.map.containerPointToLatLng([x, y]);
-  const lat = geo.lat;
-  const lon = geo.lng;
+const { x, y } = state.hoverPoint;
+const geo = state.map.containerPointToLatLng([x, y]);
+const lat = geo.lat;
+const lon = geo.lng;
 
-  if (
-    lat < state.data.domain.lat_min || lat > state.data.domain.lat_max ||
-    lon < state.data.domain.lon_min || lon > state.data.domain.lon_max
-  ) {
-    tooltip.style.display = "none";
-    return;
-  }
+if (
+lat < state.data.domain.lat_min || lat > state.data.domain.lat_max ||
+lon < state.data.domain.lon_min || lon > state.data.domain.lon_max
+) {
+tooltip.style.display = "none";
+return;
+}
 
-  const grid = buildSourceGrid();
-  if (state.rainSet === "aifs") {
-    const value = bilinearAifsRain(grid, lat, lon, state.aifsModel, state.selectedDay);
-    if (!Number.isFinite(value)) { tooltip.style.display = "none"; return; }
-    tooltip.innerHTML =
-      `<div class="rain-tooltip-title">${escapeHtml(state.aifsModel)} — Day ${state.selectedDay + 1}</div>` +
-      `<div class="rain-tooltip-main"><b>${value.toFixed(1)} mm</b><span>AIFS Set</span></div>` +
-      `<small>${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E</small>`;
-  } else {
-    const models = [...state.selectedModels];
-    if (!models.length) { tooltip.style.display = "none"; return; }
-    const values = models
-      .map(model => ({ model, value: bilinearRain(grid, lat, lon, model, state.selectedDay) }))
-      .filter(item => Number.isFinite(item.value));
-    if (!values.length) { tooltip.style.display = "none"; return; }
-    const blend = values.reduce((sum, item) => sum + item.value, 0) / values.length;
-    const modelLines = values.map(item =>
-      `<div><span>${escapeHtml(item.model)}</span><b>${item.value.toFixed(1)} mm</b></div>`
-    ).join("");
-    tooltip.innerHTML =
-      `<div class="rain-tooltip-title">Rainfall — Day ${state.selectedDay + 1}</div>` +
-      `<div class="rain-tooltip-main"><b>${blend.toFixed(1)} mm</b><span>selected-model blend</span></div>` +
-      modelLines +
-      `<small>${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E</small>`;
-  }
+const grid = buildSourceGrid();
+if (state.rainSet === "aifs") {
+const value = bilinearAifsRain(grid, lat, lon, state.aifsModel, state.selectedDay);
+if (!Number.isFinite(value)) { tooltip.style.display = "none"; return; }
+tooltip.innerHTML =
+<div class="rain-tooltip-title">${escapeHtml(state.aifsModel)} — Day ${state.selectedDay + 1}</div> +
+<div class="rain-tooltip-main"><b>${value.toFixed(1)} mm</b><span>AIFS Set</span></div> +
+<small>${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E</small>;
+} else {
+const models = [...state.selectedModels];
+if (!models.length) { tooltip.style.display = "none"; return; }
+const values = models
+.map(model => ({ model, value: bilinearRain(grid, lat, lon, model, state.selectedDay) }))
+.filter(item => Number.isFinite(item.value));
+if (!values.length) { tooltip.style.display = "none"; return; }
+const blend = values.reduce((sum, item) => sum + item.value, 0) / values.length;
+const modelLines = values.map(item =>
+<div><span>${escapeHtml(item.model)}</span><b>${item.value.toFixed(1)} mm</b></div>
+).join("");
+tooltip.innerHTML =
+<div class="rain-tooltip-title">Rainfall — Day ${state.selectedDay + 1}</div> +
+<div class="rain-tooltip-main"><b>${blend.toFixed(1)} mm</b><span>selected-model blend</span></div> +
+modelLines +
+<small>${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E</small>;
+}
 
-  const mapWidth = mapElWidth();
-  const mapHeight = mapElHeight();
-  const tw = tooltip.offsetWidth || 190;
-  const th = tooltip.offsetHeight || 110;
-  const gap = 14;
-  let left = x + gap;
-  let top = y + gap;
-  if (left + tw > mapWidth - 6) left = x - tw - gap;
-  if (top + th > mapHeight - 6) top = y - th - gap;
-  left = Math.max(6, Math.min(left, mapWidth - tw - 6));
-  top = Math.max(6, Math.min(top, mapHeight - th - 6));
+const mapWidth = mapElWidth();
+const mapHeight = mapElHeight();
+const tw = tooltip.offsetWidth || 190;
+const th = tooltip.offsetHeight || 110;
+const gap = 14;
+let left = x + gap;
+let top = y + gap;
+if (left + tw > mapWidth - 6) left = x - tw - gap;
+if (top + th > mapHeight - 6) top = y - th - gap;
+left = Math.max(6, Math.min(left, mapWidth - tw - 6));
+top = Math.max(6, Math.min(top, mapHeight - th - 6));
 
-  tooltip.style.left = `${left}px`;
-  tooltip.style.top = `${top}px`;
-  tooltip.style.display = "block";
+tooltip.style.left = ${left}px;
+tooltip.style.top = ${top}px;
+tooltip.style.display = "block";
 }
 
 function mapElWidth() {
-  const el = $("map");
-  return el ? el.clientWidth : 0;
+const el = $("map");
+return el ? el.clientWidth : 0;
 }
 
 function mapElHeight() {
-  const el = $("map");
-  return el ? el.clientHeight : 0;
+const el = $("map");
+return el ? el.clientHeight : 0;
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>'"]/g, ch => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
-  }[ch]));
+return String(value).replace(/[&<>'"]/g, ch => ({
+"&": "&", "<": "<", ">": ">", "'": "'", '"': """
+}[ch]));
 }
 
 function makeCanvas() {
-  const mapEl = $("map");
-  if (!mapEl) return;
+const mapEl = $("map");
+if (!mapEl) return;
 
-  if (!state.canvas) {
-    state.canvas = document.createElement("canvas");
-    state.canvas.className = "rainfall-overlay";
-    state.canvas.style.position = "absolute";
-    state.canvas.style.left = "0";
-    state.canvas.style.top = "0";
-    state.canvas.style.pointerEvents = "none";
-    state.canvas.style.zIndex = "450";
-    state.canvas.style.opacity = String(state.opacity);
-    state.canvas.style.transition = "opacity 0.15s ease";
-    mapEl.appendChild(state.canvas);
-  }
+if (!state.canvas) {
+state.canvas = document.createElement("canvas");
+state.canvas.className = "rainfall-overlay";
+state.canvas.style.position = "absolute";
+state.canvas.style.left = "0";
+state.canvas.style.top = "0";
+state.canvas.style.pointerEvents = "none";
+state.canvas.style.zIndex = "450";
+state.canvas.style.opacity = String(state.opacity);
+state.canvas.style.transition = "opacity 0.15s ease";
+mapEl.appendChild(state.canvas);
+}
 
-  const w = Math.max(1, mapEl.clientWidth);
-  const h = Math.max(1, mapEl.clientHeight);
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  state.canvas.width = Math.round(w * dpr);
-  state.canvas.height = Math.round(h * dpr);
-  state.canvas.style.width = `${w}px`;
-  state.canvas.style.height = `${h}px`;
-  state.ctx = state.canvas.getContext("2d", { alpha: true });
-  state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+const w = Math.max(1, mapEl.clientWidth);
+const h = Math.max(1, mapEl.clientHeight);
+const dpr = Math.min(window.devicePixelRatio || 1, 2);
+state.canvas.width = Math.round(w * dpr);
+state.canvas.height = Math.round(h * dpr);
+state.canvas.style.width = ${w}px;
+state.canvas.style.height = ${h}px;
+state.ctx = state.canvas.getContext("2d", { alpha: true });
+state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 // ADAPTIVE PERFORMANCE RENDERING: Instant load on startup, high-detail when zoomed in
 function drawRainfall() {
-  if (!state.data || !state.map) return;
-  makeCanvas();
-  const ctx = state.ctx;
-  const canvas = state.canvas;
-  if (!ctx || !canvas) return;
+if (!state.data || !state.map) return;
+makeCanvas();
+const ctx = state.ctx;
+const canvas = state.canvas;
+if (!ctx || !canvas) return;
 
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  const models = [...state.selectedModels];
-  ctx.clearRect(0, 0, w, h);
-  if (state.rainSet === "standard" && !models.length) return;
+const w = canvas.clientWidth;
+const h = canvas.clientHeight;
+const models = [...state.selectedModels];
+ctx.clearRect(0, 0, w, h);
+if (state.rainSet === "standard" && !models.length) return;
 
-  const source = buildSourceGrid();
-  const latStep = Number(source.latStep) || 0.5;
-  const lonStep = Number(source.lonStep) || 0.5;
-  const halfLat = latStep / 2;
-  const halfLon = lonStep / 2;
+const source = buildSourceGrid();
+const latStep = Number(source.latStep) || 0.5;
+const lonStep = Number(source.lonStep) || 0.5;
+const halfLat = latStep / 2;
+const halfLon = lonStep / 2;
 
-  // Automatically adjust resolution based on zoom level to ensure zero startup lag
-  const zoom = state.map.getZoom();
-  let displayStep = 0.125; // Coarse & lightning-fast when viewing full Pan-India on startup
-  if (zoom >= 7) {
-    displayStep = 0.035;   // High-detail smooth curves when zoomed into state level
-  } else if (zoom === 6) {
-    displayStep = 0.06;    // Medium detail
-  }
+// Automatically adjust resolution based on zoom level to ensure zero startup lag
+const zoom = state.map.getZoom();
+let displayStep = 0.125; // Coarse & lightning-fast when viewing full Pan-India on startup
+if (zoom >= 7) {
+displayStep = 0.035;   // High-detail smooth curves when zoomed into state level
+} else if (zoom === 6) {
+displayStep = 0.06;    // Medium detail
+}
 
-  const subRows = Math.max(1, Math.round(latStep / displayStep));
-  const subCols = Math.max(1, Math.round(lonStep / displayStep));
-  const cellLat = latStep / subRows;
-  const cellLon = lonStep / subCols;
+const subRows = Math.max(1, Math.round(latStep / displayStep));
+const subCols = Math.max(1, Math.round(lonStep / displayStep));
+const cellLat = latStep / subRows;
+const cellLon = lonStep / subCols;
 
-  ctx.save();
-  ctx.globalAlpha = Math.max(0, Math.min(1, state.opacity));
-  ctx.imageSmoothingEnabled = true;
-  ctx.filter = "none";
+ctx.save();
+ctx.globalAlpha = Math.max(0, Math.min(1, state.opacity));
+ctx.imageSmoothingEnabled = true;
+ctx.filter = "none";
 
-  source.points.forEach(point => {
-    const lat = Number(point.lat);
-    const lon = Number(point.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+source.points.forEach(point => {
+const lat = Number(point.lat);
+const lon = Number(point.lon);
+if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
-    const cellNorth = lat + halfLat;
-    const cellSouth = lat - halfLat;
-    const cellWest = lon - halfLon;
-    const cellEast = lon + halfLon;
+const cellNorth = lat + halfLat;
+const cellSouth = lat - halfLat;
+const cellWest = lon - halfLon;
+const cellEast = lon + halfLon;
 
-    const cellNW = state.map.latLngToContainerPoint([cellNorth, cellWest]);
-    const cellSE = state.map.latLngToContainerPoint([cellSouth, cellEast]);
+const cellNW = state.map.latLngToContainerPoint([cellNorth, cellWest]);
+const cellSE = state.map.latLngToContainerPoint([cellSouth, cellEast]);
 
-    // Viewport Culling - skips off-screen grid tiles completely
-    if (
-      Math.max(cellNW.x, cellSE.x) < -20 || 
-      Math.min(cellNW.x, cellSE.x) > w + 20 ||
-      Math.max(cellNW.y, cellSE.y) < -20 || 
-      Math.min(cellNW.y, cellSE.y) > h + 20
-    ) {
-      return; 
-    }
+// Viewport Culling - skips off-screen grid tiles completely
+if (
+  Math.max(cellNW.x, cellSE.x) < -20 || 
+  Math.min(cellNW.x, cellSE.x) > w + 20 ||
+  Math.max(cellNW.y, cellSE.y) < -20 || 
+  Math.min(cellNW.y, cellSE.y) > h + 20
+) {
+  return; 
+}
 
-    const pxWidth = Math.abs(cellSE.x - cellNW.x);
-    const pxHeight = Math.abs(cellSE.y - cellNW.y);
-    const subPxW = pxWidth / subCols;
-    const subPxH = pxHeight / subRows;
+const pxWidth = Math.abs(cellSE.x - cellNW.x);
+const pxHeight = Math.abs(cellSE.y - cellNW.y);
+const subPxW = pxWidth / subCols;
+const subPxH = pxHeight / subRows;
+
+const startX = Math.min(cellNW.x, cellSE.x);
+const startY = Math.min(cellNW.y, cellSE.y);
+
+for (let r = 0; r < subRows; r++) {
+  const centerLat = cellNorth - (r + 0.5) * cellLat;
+  const y0 = startY + r * subPxH;
+
+  for (let c = 0; c < subCols; c++) {
+    const centerLon = cellWest + (c + 0.5) * cellLon;
+    const x0 = startX + c * subPxW;
+
+    const value = state.rainSet === "aifs"
+      ? bilinearAifsRain(source, centerLat, centerLon, state.aifsModel, state.selectedDay)
+      : blendedRain(source, centerLat, centerLon, state.selectedDay, models);
     
-    const startX = Math.min(cellNW.x, cellSE.x);
-    const startY = Math.min(cellNW.y, cellSE.y);
+    const color = colorAt(value);
+    if (!color) continue;
 
-    for (let r = 0; r < subRows; r++) {
-      const centerLat = cellNorth - (r + 0.5) * cellLat;
-      const y0 = startY + r * subPxH;
-
-      for (let c = 0; c < subCols; c++) {
-        const centerLon = cellWest + (c + 0.5) * cellLon;
-        const x0 = startX + c * subPxW;
-
-        const value = state.rainSet === "aifs"
-          ? bilinearAifsRain(source, centerLat, centerLon, state.aifsModel, state.selectedDay)
-          : blendedRain(source, centerLat, centerLon, state.selectedDay, models);
-        
-        const color = colorAt(value);
-        if (!color) continue;
-
-        ctx.fillStyle = color;
-        ctx.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(subPxW) + 1.2, Math.ceil(subPxH) + 1.2);
-      }
-    }
-  });
-
-  ctx.restore();
-
-  if (state.windEnabled) {
-    drawWindBarbs(ctx, source, w, h);
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(subPxW) + 1.2, Math.ceil(subPxH) + 1.2);
   }
+}
+
+});
+
+ctx.restore();
+
+if (state.windEnabled) {
+drawWindBarbs(ctx, source, w, h);
+}
 }
 
 function hexToRgb(hex) {
-  const h = hex.replace("#", "");
-  return [
-    parseInt(h.slice(0,2),16),
-    parseInt(h.slice(2,4),16),
-    parseInt(h.slice(4,6),16)
-  ];
+const h = hex.replace("#", "");
+return [
+parseInt(h.slice(0,2),16),
+parseInt(h.slice(2,4),16),
+parseInt(h.slice(4,6),16)
+];
 }
 
 function drawWindBarbs(ctx, grid, w, h) {
-  const bounds = state.data.domain;
-  const spacing = WIND_GRID_SPACING_DEG;
+const bounds = state.data.domain;
+const spacing = WIND_GRID_SPACING_DEG;
 
-  const latStart = Math.ceil(bounds.lat_min / spacing) * spacing;
-  const lonStart = Math.ceil(bounds.lon_min / spacing) * spacing;
+const latStart = Math.ceil(bounds.lat_min / spacing) * spacing;
+const lonStart = Math.ceil(bounds.lon_min / spacing) * spacing;
 
-  ctx.save();
-  ctx.strokeStyle = "#111";
-  ctx.fillStyle = "#111";
-  ctx.lineWidth = 1.3;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.font = "10px Arial";
+ctx.save();
+ctx.strokeStyle = "#111";
+ctx.fillStyle = "#111";
+ctx.lineWidth = 1.3;
+ctx.lineCap = "round";
+ctx.lineJoin = "round";
+ctx.font = "10px Arial";
 
-  for (let lat = latStart; lat <= bounds.lat_max; lat += spacing) {
-    for (let lon = lonStart; lon <= bounds.lon_max; lon += spacing) {
-      const point = state.map.latLngToContainerPoint([lat, lon]);
-      if (point.x < -30 || point.x > w + 30 || point.y < -30 || point.y > h + 30) continue;
+for (let lat = latStart; lat <= bounds.lat_max; lat += spacing) {
+for (let lon = lonStart; lon <= bounds.lon_max; lon += spacing) {
+const point = state.map.latLngToContainerPoint([lat, lon]);
+if (point.x < -30 || point.x > w + 30 || point.y < -30 || point.y > h + 30) continue;
 
-      const wind = windAtPoint(grid, lat, lon, state.selectedDay, state.windSource);
-      if (!wind) continue;
+  const wind = windAtPoint(grid, lat, lon, state.selectedDay, state.windSource);
+  if (!wind) continue;
 
-      const knots = Math.sqrt(wind.u * wind.u + wind.v * wind.v) * 1.943844;
-      if (!Number.isFinite(knots) || knots < WIND_MIN_KNOTS) continue;
+  const knots = Math.sqrt(wind.u * wind.u + wind.v * wind.v) * 1.943844;
+  if (!Number.isFinite(knots) || knots < WIND_MIN_KNOTS) continue;
 
-      drawOneBarb(ctx, point.x, point.y, wind.u, wind.v, knots);
-    }
-  }
+  drawOneBarb(ctx, point.x, point.y, wind.u, wind.v, knots);
+}
 
-  ctx.restore();
+}
+
+ctx.restore();
 }
 
 function drawOneBarb(ctx, x, y, u, v, knots) {
-  const mag = Math.sqrt(u*u + v*v) || 1;
-  const fromX = -u / mag;
-  const fromY = v / mag;
+const mag = Math.sqrt(uu + vv) || 1;
+const fromX = -u / mag;
+const fromY = v / mag;
 
-  const length = 23;
-  const ex = x + fromX * length;
-  const ey = y + fromY * length;
+const length = 23;
+const ex = x + fromX * length;
+const ey = y + fromY * length;
 
-  ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(ex, ey);
-  ctx.stroke();
+ctx.beginPath();
+ctx.moveTo(x, y);
+ctx.lineTo(ex, ey);
+ctx.stroke();
 
-  let remaining = Math.round(knots / 5) * 5;
-  let pos = 0;
-  const barbSpacing = 5.5;
-  const feather = 9;
-  const angle = Math.atan2(fromY, fromX);
-  const backX = -Math.cos(angle);
-  const backY = -Math.sin(angle);
-  const sideX = -Math.sin(angle);
-  const sideY = Math.cos(angle);
+let remaining = Math.round(knots / 5) * 5;
+let pos = 0;
+const barbSpacing = 5.5;
+const feather = 9;
+const angle = Math.atan2(fromY, fromX);
+const backX = -Math.cos(angle);
+const backY = -Math.sin(angle);
+const sideX = -Math.sin(angle);
+const sideY = Math.cos(angle);
 
-  const fifties = Math.floor(remaining / 50);
-  remaining -= fifties * 50;
-  const tens = Math.floor(remaining / 10);
-  remaining -= tens * 10;
-  const fives = Math.floor(remaining / 5);
+const fifties = Math.floor(remaining / 50);
+remaining -= fifties * 50;
+const tens = Math.floor(remaining / 10);
+remaining -= tens * 10;
+const fives = Math.floor(remaining / 5);
 
-  for (let i = 0; i < fifties; i++) {
-    const bx = ex + backX * pos;
-    const by = ey + backY * pos;
-    const tipX = bx + backX * 10;
-    const tipY = by + backY * 10;
-    const outerX = bx + sideX * 7;
-    const outerY = by + sideY * 7;
-    ctx.beginPath();
-    ctx.moveTo(bx, by);
-    ctx.lineTo(tipX, tipY);
-    ctx.lineTo(outerX, outerY);
-    ctx.closePath();
-    ctx.fill();
-    pos += barbSpacing;
-  }
+for (let i = 0; i < fifties; i++) {
+const bx = ex + backX * pos;
+const by = ey + backY * pos;
+const tipX = bx + backX * 10;
+const tipY = by + backY * 10;
+const outerX = bx + sideX * 7;
+const outerY = by + sideY * 7;
+ctx.beginPath();
+ctx.moveTo(bx, by);
+ctx.lineTo(tipX, tipY);
+ctx.lineTo(outerX, outerY);
+ctx.closePath();
+ctx.fill();
+pos += barbSpacing;
+}
 
-  for (let i = 0; i < tens; i++) {
-    const bx = ex + backX * pos;
-    const by = ey + backY * pos;
-    ctx.beginPath();
-    ctx.moveTo(bx, by);
-    ctx.lineTo(bx + sideX * feather + backX * 7, by + sideY * feather + backY * 7);
-    ctx.stroke();
-    pos += barbSpacing;
-  }
+for (let i = 0; i < tens; i++) {
+const bx = ex + backX * pos;
+const by = ey + backY * pos;
+ctx.beginPath();
+ctx.moveTo(bx, by);
+ctx.lineTo(bx + sideX * feather + backX * 7, by + sideY * feather + backY * 7);
+ctx.stroke();
+pos += barbSpacing;
+}
 
-  if (fives) {
-    const bx = ex + backX * pos;
-    const by = ey + backY * pos;
-    ctx.beginPath();
-    ctx.moveTo(bx, by);
-    ctx.lineTo(bx + sideX * feather * 0.65 + backX * 7, by + sideY * feather * 0.65 + backY * 7);
-    ctx.stroke();
-  }
+if (fives) {
+const bx = ex + backX * pos;
+const by = ey + backY * pos;
+ctx.beginPath();
+ctx.moveTo(bx, by);
+ctx.lineTo(bx + sideX * feather * 0.65 + backX * 7, by + sideY * feather * 0.65 + backY * 7);
+ctx.stroke();
+}
 }
 
 function scheduleRender() {
-  cancelAnimationFrame(state.renderFrame);
-  state.renderFrame = requestAnimationFrame(drawRainfall);
+cancelAnimationFrame(state.renderFrame);
+state.renderFrame = requestAnimationFrame(drawRainfall);
 }
 
 function buildLegend() {
-  const legend = $("legend");
-  if (!legend) return;
-  const sourceText = state.rainSet === "aifs"
-    ? `AIFS Set — ${escapeHtml(state.aifsModel)}`
-    : "Standard model blend";
+const legend = $("legend");
+if (!legend) return;
+const sourceText = state.rainSet === "aifs"
+? AIFS Set — ${escapeHtml(state.aifsModel)}
+: "Standard model blend";
 
-  const rows = levels.map((v, i) =>
-    `<div class="legend-row"><i style="background:${colors[i]}"></i><span>${v}</span></div>`
-  ).join("");
+const rows = levels.map((v, i) =>
+<div class="legend-row"><i style="background:${colors[i]}"></i><span>${v}</span></div>
+).join("");
 
-  legend.innerHTML =
-    `<div class="legend-title">Rainfall (mm)</div>` +
-    `<div class="legend-source">${sourceText}</div>` +
-    `<div class="legend-bar">${rows}</div>`;
+legend.innerHTML =
+<div class="legend-title">Rainfall (mm)</div> +
+<div class="legend-source">${sourceText}</div> +
+<div class="legend-bar">${rows}</div>;
 }
 
 async function loadData() {
-  const res = await fetch(`data.json?v=${Date.now()}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`data.json HTTP ${res.status}`);
-  state.data = await res.json();
-  ensureUi();
-  setupControls();
-  getSelectedModels();
-  updateWindControls();
-  updateHeader();
-  buildLegend();
-  
-  setTimeout(() => {
-    state.map.invalidateSize();
-    state.map.fitBounds(INDIA_BOUNDS, { padding: [10, 10] });
-    drawRainfall();
-  }, 250);
+const res = await fetch(data.json?v=${Date.now()}, { cache: "no-store" });
+if (!res.ok) throw new Error(data.json HTTP ${res.status});
+state.data = await res.json();
+ensureUi();
+setupControls();
+getSelectedModels();
+updateWindControls();
+updateHeader();
+buildLegend();
+
+setTimeout(() => {
+state.map.invalidateSize();
+state.map.fitBounds(INDIA_BOUNDS, { padding: [10, 10] });
+drawRainfall();
+}, 250);
 }
 
 function initDataLoad() {
-  loadData().catch(err => {
-    console.error(err);
-    const time = $("time");
-    if (time) time.textContent = `Unable to load rainfall data: ${err.message}`;
-  });
+loadData().catch(err => {
+console.error(err);
+const time = $("time");
+if (time) time.textContent = Unable to load rainfall data: ${err.message};
+});
 }
 
 setupMap();
