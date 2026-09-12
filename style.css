@@ -86,15 +86,53 @@ section{min-width:0}
 #aifsModelWrap{font-size:12px}
 #aifsModelWrap select{font-size:12px}
 
-/* Target-map legend: compact horizontal radar-style scale */
-#legend{font-size:11px}
-.legend-title{margin-bottom:6px}
-.legend-scale{display:flex;flex-wrap:wrap;align-items:center;gap:3px 7px}
-.legend-item{margin-right:0}
-.legend-item i{width:18px;height:10px;border:0;border-radius:0}
+/* Rainfall legend: keep the existing position, but render real colour swatches. */
+#legend {
+  font-size: 11px;
+}
 
+.legend-title {
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.legend-source {
+  font-size: 10px;
+  color: #66717d;
+  margin-bottom: 5px;
+}
+
+.legend-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
+}
+
+.legend-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.legend-row i {
+  display: inline-block;
+  width: 18px;
+  height: 10px;
+  border: 1px solid rgba(0,0,0,.12);
+  border-radius: 0;
+}
 
 /* Reference-style map framing */
-.leaflet-container{background:#d8edf7}
-.leaflet-tile{filter:none}
-.leaflet-control-zoom{box-shadow:0 1px 4px rgba(0,0,0,.22)!important}
+.leaflet-container {
+  background: #d8edf7;
+}
+
+.leaflet-tile {
+  filter: none;
+}
+
+.leaflet-control-zoom {
+  box-shadow: 0 1px 4px rgba(0,0,0,.22) !important;
+}
