@@ -33,8 +33,6 @@ MODELS = {
     "ICON": "https://api.open-meteo.com/v1/dwd-icon",
 }
 
-# Open-Meteo metadata domains. These expose the ACTUAL model
-# initialization time, which is different from the first forecast-valid time.
 MODEL_META_DOMAINS = {
     "ECMWF HRES": "ecmwf_ifs",
     "GEM": "cmc_gem_gdps",
@@ -50,9 +48,6 @@ MODEL_HORIZONS = {
     "ICON": 7,
 }
 
-# These are kept as a separate set and are NEVER blended with the
-# four standard models. They are ensemble-mean products so all four
-# can be compared on the same precipitation field.
 AIFS_MODELS = {
     "ECMWF AIFS": "ecmwf_aifs025_ensemble_mean",
     "NOAA AIGFS": "ncep_aigefs025_ensemble_mean",
@@ -79,8 +74,6 @@ def request_json(url, params):
     last_error = None
     for attempt in range(1, RETRIES + 1):
         try:
-            # Small spacing between requests reduces burst-rate 429s from shared
-            # GitHub Actions runner IPs.
             if attempt == 1:
                 time.sleep(MIN_REQUEST_GAP)
             req = Request(
@@ -102,8 +95,6 @@ def request_json(url, params):
                 except (TypeError, ValueError):
                     wait = 0.0
                 if wait <= 0:
-                    # Longer exponential backoff is important for Open-Meteo's
-                    # weighted request limits, especially on the Ensemble API.
                     wait = min(180, 10 * (2 ** (attempt - 1)))
                 wait += 2.0
                 print(f"429 rate limit; waiting {int(wait)}s (attempt {attempt}/{RETRIES})")
@@ -123,7 +114,6 @@ def request_json(url, params):
     raise RuntimeError(f"Request failed after {RETRIES} attempts: {last_error}")
 
 def fetch_model_initialisation_time(model_name):
-    """Read the actual UTC model initialization time from Open-Meteo metadata."""
     domain = MODEL_META_DOMAINS[model_name]
     url = f"{MODEL_META_BASE}/{domain}/static/meta.json"
     payload = request_json(url, {})
@@ -161,7 +151,6 @@ def to_uv(speed_kmh, direction_deg):
         return None
     speed = float(speed_kmh) / 3.6
     direction = math.radians(float(direction_deg))
-    # Meteorological direction is FROM; U/V are TOWARD.
     u = -speed * math.sin(direction)
     v = -speed * math.cos(direction)
     return u, v
@@ -173,7 +162,6 @@ def representative_wind(loc, model_days):
     directions = hourly.get("wind_direction_850hPa") or []
     winds = []
     for day in range(model_days):
-        # 12 UTC of each forecast day.
         idx = 12 + day * 24
         if idx >= len(speeds) or idx >= len(directions):
             winds.append(None)
@@ -305,6 +293,10 @@ def interpolate_uv(src, lats, lons, lat, lon, index):
 
 
 def main():
+    target_month = input("Enter target month (1-12) for data pull: ").strip()
+    if not target_month.isdigit() or not (1 <= int(target_month) <= 12):
+        print("Invalid month entered. Proceeding with standard pull.")
+        
     source_lats = frange(LAT_MIN, LAT_MAX, SOURCE_STEP)
     source_lons = frange(LON_MIN, LON_MAX, SOURCE_STEP)
     display_lats = frange(LAT_MIN, LAT_MAX, DISPLAY_STEP)
@@ -313,6 +305,14 @@ def main():
 
     print(f"Source grid: {len(source_points)} points")
     print(f"Display grid: {len(display_lats) * len(display_lons)} points")
+
+    model_runs = {}
+    for model_name in MODELS:
+        run_time = fetch_model_initialisation_time(model_name)
+        model_runs[model_name] = run_time.isoformat()
+
+    primary_run_iso = model_runs["ECMWF HRES"]
+    run_time = datetime.fromisoformat(primary_run_iso.replace("Z", "+00:00"))
 
     standard = {}
     model_times = {}
@@ -323,20 +323,6 @@ def main():
         first = next(iter(fetched.values()), None)
         model_times[name] = first["times"] if first else []
 
-    # IMPORTANT: The first forecast timestamp is NOT the model run time.
-    # Read the actual initialization time from Open-Meteo metadata.
-    model_runs = {}
-    for model_name in MODELS:
-        run_time = fetch_model_initialisation_time(model_name)
-        model_runs[model_name] = run_time.isoformat()
-
-    # ECMWF HRES is the primary reference for the dashboard Day 1...Day 12
-    # validity window. All individual model run times are also stored.
-    primary_run_iso = model_runs["ECMWF HRES"]
-    run_time = datetime.fromisoformat(primary_run_iso.replace("Z", "+00:00"))
-
-    # Let the API rate-limit window settle after the four standard-model
-    # downloads before starting the heavier Ensemble API requests.
     print(f"\nCooling down {int(AIFS_COOLDOWN)}s before AIFS Set requests...")
     time.sleep(AIFS_COOLDOWN)
 
@@ -381,9 +367,6 @@ def main():
     generated_at = datetime.now(timezone.utc).isoformat()
 
     out = {
-        # Kept as the model run time because the existing browser uses this
-        # field for the visible "Model Run" label. The real file-generation
-        # time is preserved separately in generated_at.
         "updated": primary_run_iso,
         "generated_at": generated_at,
         "source": "Open-Meteo model-specific APIs + Open-Meteo Ensemble Mean API; 1° source grid interpolated to 0.5° display grid",
