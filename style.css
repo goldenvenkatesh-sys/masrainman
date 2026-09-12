@@ -17,18 +17,19 @@ section{min-width:0}
 #map{height:760px;min-height:500px;position:relative;overflow:hidden;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.15);background:#dce7f2}
 .rainfall-overlay{position:absolute!important;pointer-events:none!important}
 
-/* Modified Legend for Horizontal Bottom Alignment */
+/* Clean, Non-Overlapping Bottom-Right Colorbar Placement */
 #legend {
   position: absolute;
-  bottom: 15px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 12px;
+  bottom: 12px;
   z-index: 1000;
-  padding: 8px 12px;
-  background: rgba(255,255,255,.96);
-  border: 1px solid rgba(0,0,0,.14);
-  border-radius: 7px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  width: auto;
+  max-width: calc(100% - 24px);
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.97);
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 8px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.2);
   font-size: 10px;
   display: flex;
   flex-direction: column;
@@ -39,7 +40,7 @@ section{min-width:0}
   font-weight: 700;
   font-size: 11px;
   text-align: center;
-  margin-bottom: 5px;
+  margin-bottom: 3px;
 }
 
 .legend-source {
@@ -51,31 +52,40 @@ section{min-width:0}
   flex-direction: row;
   gap: 1px;
   margin-top: 3px;
+  overflow-x: auto;
+  max-width: 100%;
 }
 
 .legend-row {
   display: flex;
   flex-direction: column-reverse;
   align-items: center;
-  gap: 4px;
-  width: 26px;
+  gap: 3px;
+  width: 17px;
 }
 
 .legend-row i {
   display: block;
   width: 100%;
-  height: 16px;
+  height: 14px;
   border: none;
   border-radius: 0;
 }
 
 .legend-row span {
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1;
   color: #17202a;
+  transform: scale(0.85);
 }
 
-@media(max-width:800px){main{grid-template-columns:1fr}#map{height:650px;min-height:420px}}
+@media(max-width:800px){
+  main{grid-template-columns:1fr}
+  #map{height:650px;min-height:420px}
+  #legend{right:6px;bottom:6px;padding:6px 8px}
+  .legend-row{width:14px}
+}
+
 .wind-toggle{font-weight:700}
 .wind-note{font-size:10px;line-height:1.4;color:#66717d;margin-top:5px}
 #windSourceWrap select{margin-top:5px}
