@@ -8,9 +8,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 # ============================================================
-# MasRainman updater
-# Standard models + optional 850 hPa wind + separate AIFS Set
-# Now strictly aligned to 03:00 UTC (08:30 IST) accumulations
+# MasRainman Headless Auto-Updater
+# 2-Hour Polling | 08:30 IST to 08:30 IST Accumulation
 # ============================================================
 
 BASE = Path(__file__).resolve().parent
@@ -80,7 +79,7 @@ def request_json(url, params):
             req = Request(
                 full_url,
                 headers={
-                    "User-Agent": "MasRainman/1.1 (GitHub Actions rainfall updater; non-commercial)",
+                    "User-Agent": "MasRainman-AutoFetch/2.0 (GitHub Actions; non-commercial)",
                     "Accept": "application/json",
                 },
                 method="GET",
@@ -121,9 +120,7 @@ def fetch_model_initialisation_time(model_name):
     payload = request_json(url, {})
     timestamp = payload.get("last_run_initialisation_time")
     if timestamp is None:
-        raise RuntimeError(
-            f"{model_name}: Open-Meteo metadata did not provide last_run_initialisation_time"
-        )
+        raise RuntimeError(f"{model_name}: Open-Meteo metadata did not provide last_run_initialisation_time")
     run_time = datetime.fromtimestamp(float(timestamp), timezone.utc)
     print(f"{model_name} actual model initialization: {run_time.isoformat()}")
     return run_time
@@ -133,7 +130,7 @@ def parse_locations(payload):
     return payload if isinstance(payload, list) else [payload]
 
 
-# Enforces strict 03:00 UTC (08:30 IST) to 03:00 UTC (08:30 IST) accumulation blocks
+# Enforces 03:00 UTC (08:30 IST) to 03:00 UTC boundary
 def daily_03z_totals(loc, model_days):
     hourly = loc.get("hourly", {})
     values = hourly.get("precipitation") or []
@@ -141,8 +138,6 @@ def daily_03z_totals(loc, model_days):
     periods = []
     valid_ranges = []
     
-    # Open-Meteo labels hourly sum by the preceding hour. 
-    # Therefore, rain accumulated from 03:00 to 04:00 is stored at 04:00.
     start_idx = -1
     for i, t in enumerate(times[:24]):
         if t.endswith("T04:00"):
@@ -150,7 +145,7 @@ def daily_03z_totals(loc, model_days):
             break
             
     if start_idx == -1:
-        start_idx = 4 # Fallback if T04:00 explicitly string matched fails
+        start_idx = 4
         
     for day in range(model_days):
         start = start_idx + day * 24
@@ -204,7 +199,7 @@ def representative_wind(loc, model_days):
 
 
 def fetch_standard_model(model_name, url, source_points):
-    print(f"\n=== {model_name} ===")
+    print(f"\n=== Fetching {model_name} ===")
     result = {}
     model_days = MODEL_HORIZONS[model_name]
     for start in range(0, len(source_points), BATCH_SIZE):
@@ -215,7 +210,7 @@ def fetch_standard_model(model_name, url, source_points):
             "latitude": lats,
             "longitude": lons,
             "hourly": "precipitation,wind_speed_850hPa,wind_direction_850hPa",
-            "forecast_days": model_days + 1, # +1 day requested to ensure we reach 03Z on the final day
+            "forecast_days": model_days + 1, 
             "timezone": "UTC",
             "precipitation_unit": "mm",
             "wind_speed_unit": "kmh",
@@ -233,7 +228,7 @@ def fetch_standard_model(model_name, url, source_points):
 
 
 def fetch_aifs_model(label, model_id, source_points):
-    print(f"\n=== AIFS SET: {label} ({model_id}) ===")
+    print(f"\n=== Fetching AIFS SET: {label} ({model_id}) ===")
     result = {}
     model_days = AIFS_MODEL_HORIZONS[label]
     for start in range(0, len(source_points), BATCH_SIZE):
@@ -244,7 +239,7 @@ def fetch_aifs_model(label, model_id, source_points):
             "latitude": lats,
             "longitude": lons,
             "models": model_id,
-            "hourly": "precipitation", # Switched to hourly to enforce 03Z calculation
+            "hourly": "precipitation", 
             "forecast_days": model_days + 1,
             "timezone": "UTC",
             "precipitation_unit": "mm",
@@ -355,7 +350,6 @@ def main():
     for label, model_id in AIFS_MODELS.items():
         aifs_source[label] = fetch_aifs_model(label, model_id, source_points)
 
-    # Replaces the generic logic with explicit IMD 03:00 UTC boundaries pulled directly from the array
     valid_days = []
     primary_ranges = model_times.get("ECMWF HRES", [])
     for day in range(FORECAST_DAYS):
@@ -403,7 +397,7 @@ def main():
     out = {
         "updated": primary_run_iso,
         "generated_at": generated_at,
-        "source": "Open-Meteo model-specific APIs + Open-Meteo Ensemble Mean API; 1° source grid interpolated to 0.5° display grid",
+        "source": "Open-Meteo model-specific APIs + Open-Meteo Ensemble Mean API",
         "domain": {"lat_min": LAT_MIN, "lat_max": LAT_MAX, "lon_min": LON_MIN, "lon_max": LON_MAX},
         "step": DISPLAY_STEP,
         "source_step": SOURCE_STEP,
