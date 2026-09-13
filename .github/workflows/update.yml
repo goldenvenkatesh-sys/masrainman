@@ -1,12 +1,12 @@
-name: Update Rainfall Data
+name: Auto-Update Weather Data
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Runs automatically every 6 hours
-  workflow_dispatch:        # Allows manual run from GitHub Actions tab
+    - cron: '0 */2 * * *'  # Force checks the servers every 2 hours
+  workflow_dispatch:       # Allows manual trigger button
 
 jobs:
-  update-data:
+  fetch-and-update:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -19,13 +19,12 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Run update script
+      - name: Run Python Data Fetcher
         run: python update.py
 
-      - name: Commit and push updated data.json
+      - name: Smart Commit (Only push if data is new)
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data.json
-          git commit -m "Auto-update rainfall data.json [skip ci]" || exit 0
-          git push
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-fetch latest model runs [skip ci]" && git push)
