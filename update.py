@@ -293,10 +293,6 @@ def interpolate_uv(src, lats, lons, lat, lon, index):
 
 
 def main():
-    target_month = input("Enter target month (1-12) for data pull: ").strip()
-    if not target_month.isdigit() or not (1 <= int(target_month) <= 12):
-        print("Invalid month entered. Proceeding with standard pull.")
-        
     source_lats = frange(LAT_MIN, LAT_MAX, SOURCE_STEP)
     source_lons = frange(LON_MIN, LON_MAX, SOURCE_STEP)
     display_lats = frange(LAT_MIN, LAT_MAX, DISPLAY_STEP)
