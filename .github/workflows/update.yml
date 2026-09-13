@@ -1,33 +1,31 @@
-name: Update rainfall
+name: Update Rainfall Data
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "17 */6 * * *"
-
-permissions:
-  contents: write
+    - cron: '0 */6 * * *'  # Runs automatically every 6 hours
+  workflow_dispatch:        # Allows manual run from GitHub Actions tab
 
 jobs:
-  update:
+  update-data:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.10'
 
-      - name: Update rainfall data
+      - name: Run update script
         run: python update.py
 
-      - name: Commit updated data
+      - name: Commit and push updated data.json
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data.json
-          git diff --cached --quiet || git commit -m "Update rainfall data"
+          git commit -m "Auto-update rainfall data.json [skip ci]" || exit 0
           git push
