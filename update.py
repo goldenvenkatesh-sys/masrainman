@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 # ============================================================
 # MasRainman updater
 # Standard models + optional 850 hPa wind + separate AIFS Set
+# Now strictly aligned to 03:00 UTC (08:30 IST) accumulations
 # ============================================================
 
 BASE = Path(__file__).resolve().parent
@@ -113,6 +114,7 @@ def request_json(url, params):
             time.sleep(wait)
     raise RuntimeError(f"Request failed after {RETRIES} attempts: {last_error}")
 
+
 def fetch_model_initialisation_time(model_name):
     domain = MODEL_META_DOMAINS[model_name]
     url = f"{MODEL_META_BASE}/{domain}/static/meta.json"
@@ -131,19 +133,42 @@ def parse_locations(payload):
     return payload if isinstance(payload, list) else [payload]
 
 
-def six_hour_totals(loc, max_periods):
+# Enforces strict 03:00 UTC (08:30 IST) to 03:00 UTC (08:30 IST) accumulation blocks
+def daily_03z_totals(loc, model_days):
     hourly = loc.get("hourly", {})
     values = hourly.get("precipitation") or []
     times = hourly.get("time") or []
     periods = []
-    for p in range(max_periods):
-        start = 1 + p * 6
-        block = values[start:start + 6]
-        if len(block) < 6:
+    valid_ranges = []
+    
+    # Open-Meteo labels hourly sum by the preceding hour. 
+    # Therefore, rain accumulated from 03:00 to 04:00 is stored at 04:00.
+    start_idx = -1
+    for i, t in enumerate(times[:24]):
+        if t.endswith("T04:00"):
+            start_idx = i
+            break
+            
+    if start_idx == -1:
+        start_idx = 4 # Fallback if T04:00 explicitly string matched fails
+        
+    for day in range(model_days):
+        start = start_idx + day * 24
+        end = start + 24
+        block = values[start:end]
+        
+        if len(block) < 24:
             periods.append(None)
+            valid_ranges.append(None)
         else:
-            periods.append(round(sum(float(v or 0.0) for v in block), 2))
-    return periods, times
+            valid_vals = [v for v in block if v is not None]
+            periods.append(round(sum(float(v) for v in valid_vals), 2) if valid_vals else None)
+            
+            start_time = times[start - 1] if start > 0 else times[0]
+            end_time = times[end - 1]
+            valid_ranges.append({"start": start_time, "end": end_time})
+            
+    return periods, valid_ranges
 
 
 def to_uv(speed_kmh, direction_deg):
@@ -160,9 +185,17 @@ def representative_wind(loc, model_days):
     hourly = loc.get("hourly", {})
     speeds = hourly.get("wind_speed_850hPa") or []
     directions = hourly.get("wind_direction_850hPa") or []
+    times = hourly.get("time") or []
     winds = []
+    
+    start_idx = 12
+    for i, t in enumerate(times[:24]):
+        if t.endswith("T12:00"):
+            start_idx = i
+            break
+            
     for day in range(model_days):
-        idx = 12 + day * 24
+        idx = start_idx + day * 24
         if idx >= len(speeds) or idx >= len(directions):
             winds.append(None)
             continue
@@ -182,7 +215,7 @@ def fetch_standard_model(model_name, url, source_points):
             "latitude": lats,
             "longitude": lons,
             "hourly": "precipitation,wind_speed_850hPa,wind_direction_850hPa",
-            "forecast_days": model_days,
+            "forecast_days": model_days + 1, # +1 day requested to ensure we reach 03Z on the final day
             "timezone": "UTC",
             "precipitation_unit": "mm",
             "wind_speed_unit": "kmh",
@@ -193,9 +226,9 @@ def fetch_standard_model(model_name, url, source_points):
         if len(locations) != len(batch):
             raise RuntimeError(f"{model_name}: API returned {len(locations)} locations for {len(batch)}")
         for point, loc in zip(batch, locations):
-            rain, times = six_hour_totals(loc, model_days * 4)
+            rain, valid_ranges = daily_03z_totals(loc, model_days)
             wind = representative_wind(loc, model_days)
-            result[point] = {"rain": rain, "wind850": wind, "times": times}
+            result[point] = {"rain": rain, "wind850": wind, "valid_ranges": valid_ranges}
     return result
 
 
@@ -211,8 +244,8 @@ def fetch_aifs_model(label, model_id, source_points):
             "latitude": lats,
             "longitude": lons,
             "models": model_id,
-            "daily": "precipitation_sum",
-            "forecast_days": model_days,
+            "hourly": "precipitation", # Switched to hourly to enforce 03Z calculation
+            "forecast_days": model_days + 1,
             "timezone": "UTC",
             "precipitation_unit": "mm",
         }
@@ -222,12 +255,8 @@ def fetch_aifs_model(label, model_id, source_points):
         if len(locations) != len(batch):
             raise RuntimeError(f"{label}: API returned {len(locations)} locations for {len(batch)}")
         for point, loc in zip(batch, locations):
-            daily = loc.get("daily", {})
-            values = daily.get("precipitation_sum") or []
-            result[point] = [
-                None if v is None else round(float(v), 2)
-                for v in values[:model_days]
-            ]
+            rain, _ = daily_03z_totals(loc, model_days)
+            result[point] = rain
     return result
 
 
@@ -317,7 +346,7 @@ def main():
         standard[name] = {k: v["rain"] for k, v in fetched.items()}
         standard[name + "::wind"] = {k: v["wind850"] for k, v in fetched.items()}
         first = next(iter(fetched.values()), None)
-        model_times[name] = first["times"] if first else []
+        model_times[name] = first["valid_ranges"] if first else []
 
     print(f"\nCooling down {int(AIFS_COOLDOWN)}s before AIFS Set requests...")
     time.sleep(AIFS_COOLDOWN)
@@ -326,16 +355,25 @@ def main():
     for label, model_id in AIFS_MODELS.items():
         aifs_source[label] = fetch_aifs_model(label, model_id, source_points)
 
+    # Replaces the generic logic with explicit IMD 03:00 UTC boundaries pulled directly from the array
     valid_days = []
-    if run_time:
-        for day in range(FORECAST_DAYS):
-            start = run_time.timestamp() + day * 86400
-            end = start + 86400
+    primary_ranges = model_times.get("ECMWF HRES", [])
+    for day in range(FORECAST_DAYS):
+        if day < len(primary_ranges) and primary_ranges[day]:
             valid_days.append({
                 "day": day + 1,
-                "start": datetime.fromtimestamp(start, timezone.utc).isoformat(),
-                "end": datetime.fromtimestamp(end, timezone.utc).isoformat(),
+                "start": primary_ranges[day]["start"] + "Z",
+                "end": primary_ranges[day]["end"] + "Z",
             })
+        else:
+            if run_time:
+                fallback_start = run_time.timestamp() + day * 86400
+                fallback_end = fallback_start + 86400
+                valid_days.append({
+                    "day": day + 1,
+                    "start": datetime.fromtimestamp(fallback_start, timezone.utc).isoformat(),
+                    "end": datetime.fromtimestamp(fallback_end, timezone.utc).isoformat(),
+                })
 
     grid = []
     for lat in display_lats:
@@ -345,10 +383,10 @@ def main():
                 rain_days = []
                 wind_days = []
                 for day in range(FORECAST_DAYS):
-                    six_indices = range(day * 4, day * 4 + 4)
-                    vals = [interpolate_array(standard[name], source_lats, source_lons, lat, lon, p) for p in six_indices]
-                    rain_days.append(None if all(v is None for v in vals) else round(sum(v or 0 for v in vals), 2))
-                    wind_days.append(interpolate_uv(standard[name + "::wind"], source_lats, source_lons, lat, lon, day))
+                    r_val = interpolate_array(standard[name], source_lats, source_lons, lat, lon, day)
+                    w_val = interpolate_uv(standard[name + "::wind"], source_lats, source_lons, lat, lon, day)
+                    rain_days.append(r_val)
+                    wind_days.append(w_val)
                 models[name] = {"rain": rain_days, "wind850": wind_days}
 
             aifs = {}
