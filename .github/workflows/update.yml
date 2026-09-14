@@ -2,8 +2,9 @@ name: Auto-Update Weather Data
 
 on:
   schedule:
-    - cron: '0 */2 * * *'  # Force checks the servers every 2 hours
-  workflow_dispatch:       # Allows manual trigger button
+    # Precision schedule to bypass GitHub queues and catch Open-Meteo's 7-hour processing delay
+    - cron: '30 1,3,7,9,13,15,19,21 * * *'
+  workflow_dispatch:       
 
 jobs:
   fetch-and-update:
@@ -22,7 +23,7 @@ jobs:
       - name: Run Python Data Fetcher
         run: python update.py
 
-      - name: Smart Commit (Only push if data is new)
+      - name: Commit and push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
