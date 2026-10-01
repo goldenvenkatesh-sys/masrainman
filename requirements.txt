@@ -17,4 +17,5 @@ pyproj
 fiona
 basemap==2.0.0
 gunicorn
-
+netCDF4
+h5netcdf
