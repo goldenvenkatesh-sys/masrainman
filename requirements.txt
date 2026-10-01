@@ -15,4 +15,5 @@ geopandas
 shapely
 pyproj
 fiona
-basemap
+basemap==2.0.0
+
