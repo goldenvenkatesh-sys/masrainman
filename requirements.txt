@@ -16,4 +16,5 @@ shapely
 pyproj
 fiona
 basemap==2.0.0
+gunicorn app:app
 
