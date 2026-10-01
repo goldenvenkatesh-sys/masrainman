@@ -1,0 +1,18 @@
+# MASRAINMAN NEM Weather Command Center - V195 Render/Windows runtime
+# Core HTTP / data stack
+requests
+numpy
+pandas
+scipy
+xarray
+cfgrib
+eccodes
+ecmwf-opendata
+matplotlib
+
+# GIS / map rendering
+geopandas
+shapely
+pyproj
+fiona
+basemap
