@@ -80,8 +80,8 @@ PORT = int(os.environ.get("PORT", "10000"))
 
 APP_NAME = "MASRAINMAN TALK ENGINE"
 APP_VERSION = (
-    "V196 RENDER MEMORY SAFE • TALK + VOICE + "
-    "SEQUENTIAL 7-MODEL API"
+    "V197 RENDER MEMORY SAFE • TALK + VOICE + "
+    "SEQUENTIAL 7-MODEL API • DUPLICATE JOB PROTECTION"
 )
 
 TALK_CORS_ORIGIN = os.environ.get(
@@ -1050,8 +1050,58 @@ def build_talk_request(query: str) -> dict[str, Any]:
             "models": {},
         }
 
-    # Protect against excessive simultaneous jobs.
+    # Reuse an existing active job for the same resolved location.
+    # This prevents repeated clicks / browser retries from creating
+    # duplicate seven-model runs and wasting Render RAM/CPU.
+    place_key = (
+        place["name"].strip().lower(),
+        round(float(place["lat"]), 4),
+        round(float(place["lon"]), 4),
+    )
+
     with TALK_JOBS_LOCK:
+        for existing_id, existing_job in TALK_JOBS.items():
+            if not (
+                existing_job.get("running")
+                or existing_job.get("queued")
+            ):
+                continue
+
+            existing_place = existing_job.get("place") or {}
+            existing_key = (
+                str(existing_place.get("name", "")).strip().lower(),
+                round(float(existing_place.get("lat", 0.0)), 4),
+                round(float(existing_place.get("lon", 0.0)), 4),
+            )
+
+            if existing_key == place_key:
+                existing_snapshot = job_snapshot(existing_id)
+                if existing_snapshot is not None:
+                    existing_snapshot["started"] = True
+                    existing_snapshot["reused"] = True
+                    existing_snapshot["message"] = (
+                        "An active Talk analysis already exists for this "
+                        "location. Returning the existing live job."
+                    )
+                    existing_snapshot["location_message"] = (
+                        f"Location resolved: "
+                        f"{place['name']} • "
+                        f"{place['lat']:.4f}°N, "
+                        f"{place['lon']:.4f}°E"
+                    )
+                    existing_snapshot["geocode_source"] = place.get(
+                        "geocode_source",
+                        "",
+                    )
+
+                    print(
+                        f"[TALK REQUEST] REUSE {query!r} -> "
+                        f"{place['name']} job={existing_id}",
+                        flush=True,
+                    )
+                    return existing_snapshot
+
+        # Protect the small Render instance from too many distinct jobs.
         active_jobs = sum(
             1
             for job in TALK_JOBS.values()
@@ -1232,7 +1282,7 @@ def write_json(
 
 class Handler(BaseHTTPRequestHandler):
 
-    server_version = "MasRainmanTalk/196"
+    server_version = "MasRainmanTalk/197"
 
     def log_message(
         self,
