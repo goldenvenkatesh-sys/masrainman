@@ -70,7 +70,36 @@ footer a{color:var(--accent)}
 .tabs button.on{color:var(--text);border-color:var(--accent)}
 .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px}
 @media (max-width:900px){.hero,.records{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}.totals{grid-template-columns:repeat(3,1fr)}}
-@media (max-width:420px){.big{font-size:44px}.cards{grid-template-columns:1fr 1fr}}
+.short{display:none}
+.sofar{color:var(--accent);font-size:11px;white-space:nowrap}
+.wdate{color:var(--muted);white-space:nowrap}
+td{white-space:nowrap}
+@media (max-width:640px){
+  .wrap{padding:12px}
+  .panel{padding:14px;border-radius:14px}
+  .big{font-size:46px}
+  .mid{font-size:26px}
+  .rec .mid{font-size:32px}
+  .cards{grid-template-columns:1fr 1fr;gap:10px}
+  .cards .row{flex-direction:column;align-items:flex-start;gap:2px;font-size:12px}
+  .compass{width:50px;height:50px}
+  .compass .n{font-size:9px;top:0}
+  .compass .arrow{height:20px;margin-top:-20px;width:3px}
+  .totals{grid-template-columns:repeat(5,1fr);gap:5px}
+  .tot{padding:6px 2px}.tot span{font-size:10px}.tot b{font-size:14px}
+  .long,.wd,.pkd,.bar{display:none}
+  .short{display:inline}
+  table{font-size:12.5px}
+  th,td{padding:7px 4px}
+  th{font-size:11px}
+  .sofar{display:block;font-size:10px}
+  .charts .panel{height:280px}
+  .charts .wide{height:320px}
+  .tabs button{padding:4px 8px}
+  header h1{font-size:17px}
+  .badge{font-size:11px;padding:4px 8px}
+}
+@media (max-width:360px){.cards{grid-template-columns:1fr}.totals{grid-template-columns:repeat(3,1fr)}}
 </style>
 </head>
 <body>
@@ -179,16 +208,16 @@ footer a{color:var(--accent)}
     <div class="panel"><div class="label">Humidity &amp; pressure</div><div class="cwrap"><canvas id="cHum"></canvas></div></div>
     <div class="panel wide" style="height:auto">
       <div class="label">Daily rainfall · 24 h ending 8:30 am IST</div>
-      <div class="tbl"><table><thead><tr><th>Ending 8:30 am on</th><th>Rain (mm)</th><th>Peak rate (mm/h)</th><th>Peak at</th><th>Max °C</th><th>Min °C</th></tr></thead>
+      <div class="tbl"><table><thead><tr><th><span class="long">Ending 8:30 am on</span><span class="short">Day</span></th><th><span class="long">Rain (mm)</span><span class="short">Rain</span></th><th><span class="long">Peak rate (mm/h)</span><span class="short">Peak</span></th><th><span class="long">Peak at</span><span class="short">At</span></th><th><span class="long">Max °C</span><span class="short">Max</span></th><th><span class="long">Min °C</span><span class="short">Min</span></th></tr></thead>
       <tbody id="dailyBody"></tbody></table></div>
     </div>
     <div class="panel" style="height:auto">
       <div class="label">Weekly totals (Mon–Sun rain days)</div>
-      <div class="tbl"><table><thead><tr><th>Week</th><th>Rain (mm)</th></tr></thead><tbody id="weekBody"></tbody></table></div>
+      <div class="tbl"><table><thead><tr><th>Week</th><th><span class="long">Rain (mm)</span><span class="short">Rain</span></th></tr></thead><tbody id="weekBody"></tbody></table></div>
     </div>
     <div class="panel" style="height:auto">
       <div class="label">Monthly totals</div>
-      <div class="tbl"><table><thead><tr><th>Month</th><th>Rain (mm)</th><th>Rainy days</th><th>Wettest day</th><th>Peak rate</th></tr></thead><tbody id="monthBody"></tbody></table></div>
+      <div class="tbl"><table><thead><tr><th>Month</th><th><span class="long">Rain (mm)</span><span class="short">Rain</span></th><th><span class="long">Rainy days</span><span class="short">Days</span></th><th><span class="long">Wettest day</span><span class="short">Wettest</span></th><th><span class="long">Peak rate</span><span class="short">Peak</span></th></tr></thead><tbody id="monthBody"></tbody></table></div>
     </div>
   </section>
 
@@ -328,7 +357,7 @@ const base = {
   responsive: true, maintainAspectRatio: false, animation: false,
   interaction: { mode: "index", intersect: false },
   plugins: { legend: { labels: { boxWidth: 10, boxHeight: 10 } } },
-  scales: { x: { ticks: { maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } } }
+  scales: { x: { ticks: { maxTicksLimit: window.innerWidth < 640 ? 4 : 8, maxRotation: 0 }, grid: { display: false } } }
 };
 function makeChart(id, datasets, scales) {
   if (charts[id]) charts[id].destroy();
@@ -368,9 +397,13 @@ function renderDaily(daily) {
   const max = Math.max(1, ...rows.map(([, d]) => d.rainMm || 0));
   $("dailyBody").innerHTML = rows.map(([k, d]) => {
     const w = Math.round(((d.rainMm || 0) / max) * 80);
-    const live = k === rainDayKey ? ' <span style="color:var(--accent);font-size:11px">(so far)</span>' : "";
-    return `<tr><td>${dayLabel(k)}${live}</td><td><span class="bar" style="width:${w}px"></span>${fmt(d.rainMm)}</td>
-      <td>${fmt(d.peakRateMm)}</td><td>${d.peakRateMm ? new Date(d.peakAt).toLocaleString("en-IN", { timeZone: TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+    const live = k === rainDayKey ? ' <span class="sofar">(so far)</span>' : "";
+    const wd = dayLabel(k, { weekday: "short" }), dm = dayLabel(k, { day: "numeric", month: "short" });
+    const pk = d.peakRateMm ? new Date(d.peakAt) : null;
+    const pkTime = pk ? pk.toLocaleTimeString("en-IN", { timeZone: TZ, hour: "numeric", minute: "2-digit" }).replace(" ", "\u00a0") : "—";
+    const pkDate = pk ? pk.toLocaleDateString("en-IN", { timeZone: TZ, day: "numeric", month: "short" }) + ", " : "";
+    return `<tr><td><span class="wd">${wd}, </span>${dm}${live}</td><td><span class="bar" style="width:${w}px"></span>${fmt(d.rainMm)}</td>
+      <td>${fmt(d.peakRateMm)}</td><td><span class="pkd">${pkDate}</span>${pkTime}</td>
       <td>${fmt(d.tMax)}</td><td>${fmt(d.tMin)}</td></tr>`;
   }).join("") || `<tr><td colspan="6">No data yet</td></tr>`;
 }
@@ -379,11 +412,11 @@ function renderTotals(L) {
   const wmax = Math.max(1, ...weeks.map((w) => w.rainMm || 0));
   $("weekBody").innerHTML = weeks.map((w, i) => {
     const endK = (() => { const d = new Date(w.start + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); })();
-    return `<tr><td>${dayLabel(w.start, { day: "numeric", month: "short" })} – ${dayLabel(endK, { day: "numeric", month: "short" })}${i === 0 ? ' <span style="color:var(--accent);font-size:11px">(this week)</span>' : ""}</td>
+    return `<tr><td>${dayLabel(w.start, { day: "numeric", month: "short" })} – ${dayLabel(endK, { day: "numeric", month: "short" })}${i === 0 ? ' <span class="sofar">(this week)</span>' : ""}</td>
       <td><span class="bar" style="width:${Math.round((w.rainMm / wmax) * 70)}px"></span>${fmt(w.rainMm)}</td></tr>`;
   }).join("") || `<tr><td colspan="2">No data yet</td></tr>`;
-  $("monthBody").innerHTML = months.map((m) => `<tr><td>${monthLabel(m.month)}</td><td>${fmt(m.rainMm)}</td><td>${m.rainyDays}</td>
-      <td>${m.maxDayKey ? fmt(m.maxDayMm) + " <span style='color:var(--muted)'>(" + dayLabel(m.maxDayKey, { day: "numeric", month: "short" }) + ")</span>" : "—"}</td>
+  $("monthBody").innerHTML = months.map((m) => `<tr><td><span class="long">${monthLabel(m.month)}</span><span class="short">${new Date(m.month + "-15T12:00:00Z").toLocaleDateString("en-IN", { timeZone: "UTC", month: "short", year: "2-digit" })}</span></td><td>${fmt(m.rainMm)}</td><td>${m.rainyDays}</td>
+      <td>${m.maxDayKey ? fmt(m.maxDayMm) + " <span class='wdate'>(" + dayLabel(m.maxDayKey, { day: "numeric", month: "short" }) + ")</span>" : "—"}</td>
       <td>${fmt(m.peakRateMm)}</td></tr>`).join("") || `<tr><td colspan="5">No data yet</td></tr>`;
 }
 
