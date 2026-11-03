@@ -1,16 +1,282 @@
 {
- "2026-11-02": {
-  "rainMm": 20.6,
+ "2026-09-26": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 32.7,
+  "tMin": 28.5
+ },
+ "2026-09-27": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 38.3,
+  "tMin": 27.5
+ },
+ "2026-09-28": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 37.7,
+  "tMin": 28.3
+ },
+ "2026-09-29": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 37.1,
+  "tMin": 27.5
+ },
+ "2026-09-30": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 37.4,
+  "tMin": 28.3
+ },
+ "2026-10-01": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 37.6,
+  "tMin": 26.9
+ },
+ "2026-10-02": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 34.2,
+  "tMin": 27.4
+ },
+ "2026-10-03": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 33.9,
+  "tMin": 27.3
+ },
+ "2026-10-04": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 33.1,
+  "tMin": 27.2
+ },
+ "2026-10-05": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 34.5,
+  "tMin": 27.1
+ },
+ "2026-10-06": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 33.7,
+  "tMin": 25.8
+ },
+ "2026-10-07": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 35.8,
+  "tMin": 27.7
+ },
+ "2026-10-08": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 33.9,
+  "tMin": 28.3
+ },
+ "2026-10-09": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 34.5,
+  "tMin": 27.7
+ },
+ "2026-10-10": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 34.6,
+  "tMin": 27.7
+ },
+ "2026-10-11": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 34.6,
+  "tMin": 28
+ },
+ "2026-10-12": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 34.8,
+  "tMin": 28.8
+ },
+ "2026-10-13": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 34.5,
+  "tMin": 28.3
+ },
+ "2026-10-14": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 35,
+  "tMin": 27.4
+ },
+ "2026-10-15": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 33.2,
+  "tMin": 26.5
+ },
+ "2026-10-16": {
+  "rainMm": 6.6,
+  "peakRateMm": 30.5,
+  "peakAt": 1792089300000,
+  "tMax": 33,
+  "tMin": 25.1
+ },
+ "2026-10-17": {
+  "rainMm": 28.4,
+  "peakRateMm": 64,
+  "peakAt": 1792131300000,
+  "tMax": 33.1,
+  "tMin": 25.1
+ },
+ "2026-10-18": {
+  "rainMm": 107.9,
+  "peakRateMm": 118.9,
+  "peakAt": 1792260600000,
+  "tMax": 32.9,
+  "tMin": 23.9
+ },
+ "2026-10-19": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 32.3,
+  "tMin": 25.6
+ },
+ "2026-10-20": {
+  "rainMm": 2.3,
+  "peakRateMm": 15.2,
+  "peakAt": 1792427100000,
+  "tMax": 33.1,
+  "tMin": 26.1
+ },
+ "2026-10-21": {
+  "rainMm": 52.5,
+  "peakRateMm": 39.6,
+  "peakAt": 1792516200000,
+  "tMax": 31.1,
+  "tMin": 24.7
+ },
+ "2026-10-22": {
+  "rainMm": 19.3,
+  "peakRateMm": 48.8,
+  "peakAt": 1792602000000,
+  "tMax": 30.4,
+  "tMin": 24.7
+ },
+ "2026-10-23": {
+  "rainMm": 16.7,
+  "peakRateMm": 51.8,
+  "peakAt": 1792695600000,
+  "tMax": 32.7,
+  "tMin": 24.6
+ },
+ "2026-10-24": {
+  "rainMm": 0.5,
+  "peakRateMm": 3,
+  "peakAt": 1792786800000,
+  "tMax": 30.6,
+  "tMin": 24.8
+ },
+ "2026-10-25": {
+  "rainMm": 13.9,
+  "peakRateMm": 6.1,
+  "peakAt": 1792881600000,
+  "tMax": 33,
+  "tMin": 25
+ },
+ "2026-10-26": {
+  "rainMm": 3.8,
   "peakRateMm": 9.1,
-  "peakAt": 1793617200000,
-  "tMax": 26.9,
-  "tMin": 24.2
+  "peakAt": 1792954200000,
+  "tMax": 27.9,
+  "tMin": 25
+ },
+ "2026-10-27": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 31.7,
+  "tMin": 25.2
+ },
+ "2026-10-28": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 34.6,
+  "tMin": 25.2
+ },
+ "2026-10-29": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 36.1,
+  "tMin": 25.9
+ },
+ "2026-10-30": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 37.3,
+  "tMin": 26.6
+ },
+ "2026-10-31": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 36.1,
+  "tMin": 26.8
+ },
+ "2026-11-01": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 32.7,
+  "tMin": 26.7
+ },
+ "2026-11-02": {
+  "rainMm": 23,
+  "peakRateMm": 15.2,
+  "peakAt": 1793559900000,
+  "tMax": 33.6,
+  "tMin": 24.7
  },
  "2026-11-03": {
-  "rainMm": 20.6,
+  "rainMm": 4.3,
+  "peakRateMm": 9.1,
+  "peakAt": 1793617200000,
+  "tMax": 27.3,
+  "tMin": 24.2
+ },
+ "2026-11-04": {
+  "rainMm": 0.3,
   "peakRateMm": 3,
   "peakAt": 1793691300000,
   "tMax": 30.9,
-  "tMin": 24.3
+  "tMin": 26.6
  }
 }

@@ -6,19 +6,24 @@
   "lon": 80.1749,
   "tz": "Asia/Kolkata"
  },
- "obsTime": 1793699700000,
- "builtAt": 1793699728397,
+ "obsTime": 1793700300000,
+ "builtAt": 1793700453497,
+ "loggingSince": "2026-09-26",
+ "rainDay": {
+  "key": "2026-11-04",
+  "startsAt": "08:30"
+ },
  "now": {
-  "tempC": 28.9,
-  "feelsC": 34,
-  "dewC": 24.7,
-  "hum": 78,
+  "tempC": 28.5,
+  "feelsC": 33.2,
+  "dewC": 24.5,
+  "hum": 79,
   "windKmh": 0,
   "gustKmh": 0,
   "maxGustKmh": 13,
-  "dir": 138,
-  "hPa": 1009.5,
-  "solar": 98.97,
+  "dir": 137,
+  "hPa": 1009.6,
+  "solar": 85.19,
   "uv": 0,
   "inTempC": 29.6,
   "inHum": 71
@@ -29,15 +34,84 @@
   "peakRateMm": 3,
   "peakAt": 1793691300000,
   "dayMm": 0.3,
+  "prevDayMm": 4.3,
+  "last7Mm": 27.6,
+  "weekMm": 27.6,
+  "weekStart": "2026-11-02",
+  "monthMm": 27.6,
+  "yearMm": 279.5,
+  "stationYearMm": 799.6,
   "eventMm": 27.7,
-  "weekMm": 27.7,
-  "monthMm": 27.7,
-  "yearMm": 799.6,
   "lastRain": 1793691840000,
   "lastTip": 1793691300000
  },
+ "record": {
+  "rateMm": 118.9,
+  "rateAt": 1792260600000,
+  "dayMm": 107.9,
+  "dayKey": "2026-10-18"
+ },
  "today": {
   "tMax": 30.9,
-  "tMin": 24.3
- }
+  "tMin": 26.6
+ },
+ "weeks": [
+  {
+   "start": "2026-11-02",
+   "rainMm": 27.6
+  },
+  {
+   "start": "2026-10-26",
+   "rainMm": 3.8
+  },
+  {
+   "start": "2026-10-19",
+   "rainMm": 105.2
+  },
+  {
+   "start": "2026-10-12",
+   "rainMm": 142.9
+  },
+  {
+   "start": "2026-10-05",
+   "rainMm": 0
+  },
+  {
+   "start": "2026-09-28",
+   "rainMm": 0
+  },
+  {
+   "start": "2026-09-21",
+   "rainMm": 0
+  }
+ ],
+ "months": [
+  {
+   "month": "2026-11",
+   "rainMm": 27.6,
+   "rainyDays": 2,
+   "maxDayMm": 23,
+   "maxDayKey": "2026-11-02",
+   "peakRateMm": 15.2,
+   "peakAt": 1793559900000
+  },
+  {
+   "month": "2026-10",
+   "rainMm": 251.9,
+   "rainyDays": 8,
+   "maxDayMm": 107.9,
+   "maxDayKey": "2026-10-18",
+   "peakRateMm": 118.9,
+   "peakAt": 1792260600000
+  },
+  {
+   "month": "2026-09",
+   "rainMm": 0,
+   "rainyDays": 0,
+   "maxDayMm": 0,
+   "maxDayKey": null,
+   "peakRateMm": 0,
+   "peakAt": null
+  }
+ ]
 }
