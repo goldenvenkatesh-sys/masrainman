@@ -1,0 +1,13 @@
+{
+ "buf": {
+  "lastRainRaw": 0.01,
+  "lastRainTime": 1793691300000,
+  "lastSampleTime": 1793699700000,
+  "lastCalculatedRate": 0.12,
+  "currentRate": 0,
+  "bufRR": 0.12,
+  "tRR": 1793691300000,
+  "dayKey": "2026-11-03"
+ },
+ "lastProcessed": 1793699700000
+}

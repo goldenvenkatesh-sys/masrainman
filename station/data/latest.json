@@ -1,0 +1,43 @@
+{
+ "station": {
+  "name": "Masrainman - Nanmangalam, Chennai",
+  "location": "Chennai",
+  "lat": 12.9363,
+  "lon": 80.1749,
+  "tz": "Asia/Kolkata"
+ },
+ "obsTime": 1793699700000,
+ "builtAt": 1793699728397,
+ "now": {
+  "tempC": 28.9,
+  "feelsC": 34,
+  "dewC": 24.7,
+  "hum": 78,
+  "windKmh": 0,
+  "gustKmh": 0,
+  "maxGustKmh": 13,
+  "dir": 138,
+  "hPa": 1009.5,
+  "solar": 98.97,
+  "uv": 0,
+  "inTempC": 29.6,
+  "inHum": 71
+ },
+ "rain": {
+  "rateMm": 0,
+  "stnRateMm": 0,
+  "peakRateMm": 3,
+  "peakAt": 1793691300000,
+  "dayMm": 0.3,
+  "eventMm": 27.7,
+  "weekMm": 27.7,
+  "monthMm": 27.7,
+  "yearMm": 799.6,
+  "lastRain": 1793691840000,
+  "lastTip": 1793691300000
+ },
+ "today": {
+  "tMax": 30.9,
+  "tMin": 24.3
+ }
+}
