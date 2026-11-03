@@ -13,6 +13,9 @@ on:
         description: 'Days of history to load on a rebuild (max 400)'
         default: '35'
 
+permissions:
+  contents: read
+
 concurrency:
   group: weather-station
   cancel-in-progress: false

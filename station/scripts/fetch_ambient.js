@@ -212,8 +212,6 @@ async function main() {
     station: {
       name: process.env.STATION_NAME || dev.info?.name || "MasRainman Weather Station",
       location: dev.info?.coords?.location || dev.info?.location || "",
-      lat: dev.info?.coords?.coords?.lat ?? null,
-      lon: dev.info?.coords?.coords?.lon ?? null,
       tz: TZ
     },
     obsTime: last.dateutc,

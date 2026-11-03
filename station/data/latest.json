@@ -2,8 +2,6 @@
  "station": {
   "name": "Masrainman - Nanmangalam, Chennai",
   "location": "Chennai",
-  "lat": 12.9363,
-  "lon": 80.1749,
   "tz": "Asia/Kolkata"
  },
  "obsTime": 1793700300000,

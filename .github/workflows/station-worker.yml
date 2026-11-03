@@ -6,6 +6,9 @@ on:
     paths: ['station/worker/**', '.github/workflows/station-worker.yml']
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: station-worker-deploy
   cancel-in-progress: false
@@ -41,7 +44,7 @@ jobs:
 
       - name: Install wrangler
         if: steps.check.outputs.go == 'true'
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Deploy
         id: deploy

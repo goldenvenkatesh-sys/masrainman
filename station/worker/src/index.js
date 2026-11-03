@@ -28,7 +28,31 @@ const mphToKmh = (m) => (m == null ? null : r1(m * 1.609344));
 const inHgToHpa = (i) => (i == null ? null : r1(i * 33.8639));
 const inToMm = (i) => (i == null ? null : r1(i * 25.4));
 
-const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
+const CORS = {};   // set per request by the Worker (allow-list below)
+const ALLOWED_ORIGINS = [
+  "https://goldenvenkatesh-sys.github.io",
+  "https://masrainman.blogspot.com",
+  "https://masrainman-wn3.pages.dev"
+];
+function withCors(res, request, env) {
+  const origin = request.headers.get("Origin");
+  const extra = (env.ALLOWED_ORIGINS || "").split(",").map((x) => x.trim()).filter(Boolean);
+  const ok = origin && ([...ALLOWED_ORIGINS, ...extra].includes(origin) || /^https:\/\/[a-z0-9-]+\.masrainman-wn3\.pages\.dev$/.test(origin));
+  const h = new Headers(res.headers);
+  if (ok) { h.set("Access-Control-Allow-Origin", origin); h.set("Vary", "Origin"); h.set("Access-Control-Allow-Methods", "GET, OPTIONS"); }
+  h.set("X-Content-Type-Options", "nosniff");
+  return new Response(res.body, { status: res.status, headers: h });
+}
+// constant-time compare for the upload token
+function sameToken(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+// short in-memory cache so bursts of page views don't all reach the Durable Object
+const memo = new Map();
+const MEMO_TTL = { "/api/latest": 10e3, "/api/history": 60e3, "/api/daily": 120e3, "/api/status": 10e3 };
 const json = (obj, maxAge = 0, status = 200) =>
   new Response(JSON.stringify(obj), {
     status,
@@ -111,7 +135,7 @@ export class Station extends DurableObject {
         s.lastT = st.lastProcessed || 0;
         if (st.record) s.record = st.record;
       }
-      if (latest?.station) s.station = latest.station;
+      if (latest?.station) s.station = { name: latest.station.name, location: latest.station.location };
       if (daily) for (const [k, v] of Object.entries(daily)) this.sql.exec("INSERT OR REPLACE INTO daily (k, j) VALUES (?, ?)", k, JSON.stringify(v));
       if (Array.isArray(hist)) for (const p of hist) this.sql.exec("INSERT OR REPLACE INTO history (t, j) VALUES (?, ?)", p.t, JSON.stringify(p));
       if (hist?.length) s.lastHistT = hist[hist.length - 1].t;
@@ -196,7 +220,7 @@ export class Station extends DurableObject {
     }
     const st = s.station || {};
     return {
-      station: { name: this.env.STATION_NAME || st.name || "MasRainman Weather Station", location: st.location || "", lat: st.lat ?? null, lon: st.lon ?? null, tz: this.env.STATION_TZ || "Asia/Kolkata" },
+      station: { name: this.env.STATION_NAME || st.name || "MasRainman Weather Station", location: st.location || "", tz: this.env.STATION_TZ || "Asia/Kolkata" },
       obsTime: o.t || null, builtAt: Date.now(), source: s.source,
       loggingSince: Object.keys(daily)[0] || todayKey,
       rainDay: { key: todayKey, startsAt: "08:30" },
@@ -249,8 +273,7 @@ export class Station extends DurableObject {
     const dev = devs.find((d) => d.macAddress === this.env.AMBIENT_MAC) || devs[0];
     if (!dev?.lastData) return { error: "no station data" };
     if (dev.info) {
-      s.station = { ...(s.station || {}), name: dev.info.name, location: dev.info.coords?.location || dev.info.location || "",
-        lat: dev.info.coords?.coords?.lat ?? null, lon: dev.info.coords?.coords?.lon ?? null };
+      s.station = { name: dev.info.name, location: dev.info.coords?.location || dev.info.location || "" };
     }
     const L = dev.lastData;
     const rec = { ...normalise(L), feelsLike: num(L.feelsLike), dewPoint: num(L.dewPoint), lastRain: L.lastRain };
@@ -306,21 +329,36 @@ async function readParams(request, url) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+    if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }), request, env);
 
     // /upload/<TOKEN>[...]  (also accepts /upload/<TOKEN>&field=..., /upload/<TOKEN>?field=...)
     if (url.pathname.startsWith("/upload/")) {
+      if (!["GET", "POST"].includes(request.method)) return new Response("method not allowed", { status: 405 });
+      if (+(request.headers.get("content-length") || 0) > 16384 || url.search.length > 4096) return new Response("too large", { status: 413 });
       const token = url.pathname.split("/")[2]?.split(/[?&]/)[0];
-      if (!env.UPLOAD_TOKEN || token !== env.UPLOAD_TOKEN) return json({ error: "bad token" }, 0, 403);
+      if (!sameToken(token, env.UPLOAD_TOKEN)) return new Response("forbidden", { status: 403 });
       const params = await readParams(request, url);
       if (env.AMBIENT_MAC && params.MAC && params.MAC.toUpperCase() !== env.AMBIENT_MAC.toUpperCase()) return json({ error: "unknown station" }, 0, 403);
       const res = await stub(env).fetch("https://do/ingest", { method: "POST", body: JSON.stringify(params) });
-      return new Response("success", { status: res.ok ? 200 : 500, headers: CORS });  // consoles expect a plain 200
+      return new Response(res.ok ? "success" : "error", { status: res.ok ? 200 : 500 });  // consoles expect a plain 200
     }
 
-    if (url.pathname.startsWith("/api/")) return stub(env).fetch(new Request("https://do" + url.pathname + url.search));
-    if (url.pathname === "/") return json({ name: "MasRainman station API", endpoints: ["/api/latest", "/api/history", "/api/daily", "/api/status"] });
-    return json({ error: "not found" }, 0, 404);
+    if (url.pathname.startsWith("/api/") && MEMO_TTL[url.pathname]) {
+      if (request.method !== "GET") return new Response("method not allowed", { status: 405 });
+      const h = url.pathname === "/api/history" ? Math.min(48, Math.max(1, parseInt(url.searchParams.get("h") || "48", 10) || 48)) : null;
+      const key = url.pathname + (h ? "?h=" + h : "");
+      const hit = memo.get(key);
+      let body, status = 200;
+      if (hit && Date.now() - hit.at < MEMO_TTL[url.pathname]) body = hit.body;
+      else {
+        const res = await stub(env).fetch(new Request("https://do" + key));
+        body = await res.text(); status = res.status;
+        if (res.ok) memo.set(key, { at: Date.now(), body });
+      }
+      return withCors(new Response(body, { status, headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=10" } }), request, env);
+    }
+    if (url.pathname === "/") return new Response("MasRainman station API", { headers: { "Content-Type": "text/plain" } });
+    return new Response("not found", { status: 404 });
   },
 
   async scheduled(event, env, ctx) {
