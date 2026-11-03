@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MasRainman Weather Station</title>
+<meta name="description" content="Live rain rate, rainfall and weather from the MasRainman personal weather station.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#07121f; --panel:#0e1f33; --panel2:#132a44; --line:#1f3a5c;
+  --text:#e8f1fb; --muted:#8ea7c2; --accent:#38bdf8; --rain:#22d3ee;
+  --light:#4ade80; --mod:#facc15; --heavy:#fb923c; --violent:#f43f5e;
+  --warm:#fb923c; --cool:#60a5fa;
+}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#123456 0%,var(--bg) 55%);color:var(--text);
+  font-family:Inter,system-ui,sans-serif;min-height:100vh}
+.wrap{max-width:1180px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#6366f1);display:grid;place-items:center;font-size:22px}
+h1{font-size:20px;margin:0;font-weight:800;letter-spacing:.2px}
+.sub{color:var(--muted);font-size:13px}
+.badge{font-size:12px;padding:5px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+.badge.live{color:#bbf7d0;border-color:#166534;background:#052e1a}
+.badge.stale{color:#fecaca;border-color:#7f1d1d;background:#2a0b0b}
+.grid{display:grid;gap:12px}
+.hero{grid-template-columns:1.4fr 1fr 1fr}
+.cards{grid-template-columns:repeat(4,1fr);margin-top:12px}
+.panel{background:linear-gradient(180deg,var(--panel),#0b1a2c);border:1px solid var(--line);border-radius:16px;padding:16px}
+.label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.big{font-size:54px;font-weight:800;line-height:1.05;margin-top:6px}
+.big small{font-size:18px;font-weight:600;color:var(--muted);margin-left:4px}
+.mid{font-size:30px;font-weight:700;margin-top:6px}
+.mid small{font-size:14px;color:var(--muted);font-weight:500;margin-left:3px}
+.row{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted);margin-top:8px}
+.row b{color:var(--text);font-weight:600}
+.intensity{display:inline-block;margin-top:10px;padding:5px 12px;border-radius:999px;font-weight:700;font-size:13px}
+.meter{height:10px;border-radius:999px;background:var(--panel2);margin-top:12px;overflow:hidden}
+.meter i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--light),var(--mod),var(--heavy),var(--violent));transition:width .6s}
+.totals{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}
+.tot{background:var(--panel2);border-radius:10px;padding:8px;text-align:center}
+.tot span{display:block;font-size:11px;color:var(--muted)}
+.tot b{font-size:16px}
+.compass{width:74px;height:74px;border-radius:50%;border:2px solid var(--line);position:relative;flex:none}
+.compass .n{position:absolute;top:2px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted)}
+.compass .arrow{position:absolute;left:50%;top:50%;width:4px;height:30px;margin:-30px 0 0 -2px;transform-origin:50% 100%;
+  background:linear-gradient(var(--accent),transparent);border-radius:2px;transition:transform .6s}
+.charts{grid-template-columns:1fr 1fr;margin-top:12px}
+.charts .panel{height:300px;display:flex;flex-direction:column}
+.charts .wide{grid-column:1/-1;height:340px}
+.cwrap{position:relative;flex:1;min-height:0;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+th,td{padding:8px 6px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:600;font-size:12px}
+.bar{display:inline-block;height:8px;background:var(--rain);border-radius:4px;vertical-align:middle;margin-right:6px}
+footer{color:var(--muted);font-size:12px;text-align:center;margin:20px 0 6px}
+footer a{color:var(--accent)}
+.tabs{display:flex;gap:6px}
+.tabs button{background:var(--panel2);color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.tabs button.on{color:var(--text);border-color:var(--accent)}
+.head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+@media (max-width:900px){.hero{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}.totals{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:420px){.big{font-size:44px}.cards{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">🌧️</div>
+      <div>
+        <h1 id="stName">MasRainman Weather Station</h1>
+        <div class="sub" id="stLoc">Loading station…</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="badge" id="obsBadge">—</span>
+      <span class="badge" id="nextBadge">auto-refresh 60 s</span>
+    </div>
+  </header>
+
+  <section class="grid hero">
+    <div class="panel">
+      <div class="label">Rain rate now</div>
+      <div class="big"><span id="rate">—</span><small>mm/h</small></div>
+      <span class="intensity" id="intensity">—</span>
+      <div class="meter"><i id="meter" style="width:0"></i></div>
+      <div class="row"><span>Station sensor rate</span><b id="stnRate">—</b></div>
+      <div class="row"><span>Last tip</span><b id="lastTip">—</b></div>
+      <div class="totals">
+        <div class="tot"><span>Event</span><b id="evMm">—</b></div>
+        <div class="tot"><span>Today</span><b id="dayMm">—</b></div>
+        <div class="tot"><span>Week</span><b id="wkMm">—</b></div>
+        <div class="tot"><span>Month</span><b id="moMm">—</b></div>
+        <div class="tot"><span>Year</span><b id="yrMm">—</b></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="label">Rainfall today</div>
+      <div class="big"><span id="dayBig">—</span><small>mm</small></div>
+      <div class="row"><span>Peak rate today</span><b id="peak">—</b></div>
+      <div class="row"><span>Peak at</span><b id="peakAt">—</b></div>
+      <div class="row"><span>Last rain</span><b id="lastRain">—</b></div>
+    </div>
+    <div class="panel">
+      <div class="label">Temperature</div>
+      <div class="big"><span id="temp">—</span><small>°C</small></div>
+      <div class="row"><span>Feels like</span><b id="feels">—</b></div>
+      <div class="row"><span>Today max / min</span><b id="maxmin">—</b></div>
+      <div class="row"><span>Dew point</span><b id="dew">—</b></div>
+    </div>
+  </section>
+
+  <section class="grid cards">
+    <div class="panel">
+      <div class="label">Wind</div>
+      <div style="display:flex;align-items:center;gap:12px;justify-content:space-between">
+        <div class="mid"><span id="wind">—</span><small>km/h</small></div>
+        <div class="compass"><span class="n">N</span><div class="arrow" id="arrow"></div></div>
+      </div>
+      <div class="row"><span>Gust / max today</span><b id="gust">—</b></div>
+    </div>
+    <div class="panel">
+      <div class="label">Humidity</div>
+      <div class="mid"><span id="hum">—</span><small>%</small></div>
+      <div class="row"><span>Indoor</span><b id="inside">—</b></div>
+    </div>
+    <div class="panel">
+      <div class="label">Pressure</div>
+      <div class="mid"><span id="hpa">—</span><small>hPa</small></div>
+      <div class="row"><span>3-hour trend</span><b id="trend">—</b></div>
+    </div>
+    <div class="panel">
+      <div class="label">Sun</div>
+      <div class="mid"><span id="solar">—</span><small>W/m²</small></div>
+      <div class="row"><span>UV index</span><b id="uv">—</b></div>
+    </div>
+  </section>
+
+  <section class="grid charts">
+    <div class="panel wide">
+      <div class="head"><div class="label">Rain rate &amp; accumulation</div>
+        <div class="tabs" data-for="rain"><button data-h="6">6 h</button><button data-h="24" class="on">24 h</button><button data-h="48">48 h</button></div></div>
+      <div class="cwrap"><canvas id="cRain"></canvas></div>
+    </div>
+    <div class="panel"><div class="label">Temperature &amp; dew point</div><div class="cwrap"><canvas id="cTemp"></canvas></div></div>
+    <div class="panel"><div class="label">Humidity &amp; pressure</div><div class="cwrap"><canvas id="cHum"></canvas></div></div>
+    <div class="panel wide" style="height:auto">
+      <div class="label">Daily summary</div>
+      <table><thead><tr><th>Date</th><th>Rain (mm)</th><th>Peak rate (mm/h)</th><th>Max °C</th><th>Min °C</th></tr></thead>
+      <tbody id="dailyBody"></tbody></table>
+    </div>
+  </section>
+
+  <footer>Data: Ambient Weather station · rain rate computed from bucket tips every 5 min ·
+    <a href="https://masrainman.blogspot.com" target="_blank" rel="noopener">MasRainman</a></footer>
+</div>
+
+<script>
+const TZ_DEFAULT = "Asia/Kolkata";
+let TZ = TZ_DEFAULT, hours = 24, history = [], charts = {};
+
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 1) => (v == null || isNaN(v) ? "—" : Number(v).toFixed(d));
+const timeStr = (ms) => ms ? new Date(ms).toLocaleTimeString("en-IN", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }) : "—";
+const dateTimeStr = (ms) => ms ? new Date(ms).toLocaleString("en-IN", { timeZone: TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+function ago(ms) {
+  if (!ms) return "—";
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + " min ago";
+  const h = Math.round(m / 60);
+  return h < 48 ? h + " h ago" : Math.round(h / 24) + " days ago";
+}
+// rain-rate words: light < 2.5, moderate < 7.6, heavy < 50, violent >= 50 mm/h
+function intensity(r) {
+  if (!r) return ["No rain", "#1e293b", "var(--muted)"];
+  if (r < 2.5) return ["Light rain", "#052e1a", "var(--light)"];
+  if (r < 7.6) return ["Moderate rain", "#2a2405", "var(--mod)"];
+  if (r < 50) return ["Heavy rain", "#2c1405", "var(--heavy)"];
+  return ["Violent rain", "#2c0510", "var(--violent)"];
+}
+
+async function getJson(name) {
+  const res = await fetch(`data/${name}?t=${Date.now()}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(name + " " + res.status);
+  return res.json();
+}
+
+function renderLatest(L) {
+  TZ = L.station.tz || TZ_DEFAULT;
+  $("stName").textContent = L.station.name;
+  $("stLoc").textContent = L.station.location || "Personal weather station";
+  const ageMin = (Date.now() - L.obsTime) / 60000;
+  const b = $("obsBadge");
+  b.textContent = (ageMin > 30 ? "Offline · " : "Live · ") + "obs " + timeStr(L.obsTime) + " (" + ago(L.obsTime) + ")";
+  b.className = "badge " + (ageMin > 30 ? "stale" : "live");
+
+  const R = L.rain, N = L.now;
+  $("rate").textContent = fmt(R.rateMm);
+  const [txt, bg, fg] = intensity(R.rateMm);
+  Object.assign($("intensity").style, { background: bg, color: fg });
+  $("intensity").textContent = txt;
+  $("meter").style.width = Math.min(100, Math.sqrt((R.rateMm || 0) / 100) * 100) + "%";
+  $("stnRate").textContent = fmt(R.stnRateMm) + " mm/h";
+  $("lastTip").textContent = R.lastTip ? ago(R.lastTip) : "—";
+  $("evMm").textContent = fmt(R.eventMm);
+  $("dayMm").textContent = fmt(R.dayMm);
+  $("wkMm").textContent = fmt(R.weekMm);
+  $("moMm").textContent = fmt(R.monthMm);
+  $("yrMm").textContent = fmt(R.yearMm, 0);
+  $("dayBig").textContent = fmt(R.dayMm);
+  $("peak").textContent = fmt(R.peakRateMm) + " mm/h";
+  $("peakAt").textContent = R.peakRateMm ? timeStr(R.peakAt) : "—";
+  $("lastRain").textContent = R.lastRain ? dateTimeStr(R.lastRain) : "—";
+
+  $("temp").textContent = fmt(N.tempC);
+  $("feels").textContent = fmt(N.feelsC) + " °C";
+  $("maxmin").textContent = fmt(L.today.tMax) + " / " + fmt(L.today.tMin) + " °C";
+  $("dew").textContent = fmt(N.dewC) + " °C";
+  $("wind").textContent = fmt(N.windKmh);
+  $("gust").textContent = fmt(N.gustKmh) + " / " + fmt(N.maxGustKmh) + " km/h";
+  $("arrow").style.transform = `rotate(${(N.dir || 0) + 180}deg)`; // arrow points where wind blows to
+  $("hum").textContent = fmt(N.hum, 0);
+  $("inside").textContent = N.inTempC != null ? fmt(N.inTempC) + " °C · " + fmt(N.inHum, 0) + " %" : "—";
+  $("hpa").textContent = fmt(N.hPa);
+  $("solar").textContent = fmt(N.solar, 0);
+  $("uv").textContent = fmt(N.uv, 0);
+}
+
+function pressureTrend() {
+  if (history.length < 2) return "—";
+  const last = history[history.length - 1];
+  const old = history.find((p) => p.t >= last.t - 3 * 3600e3);
+  if (!old || last.hPa == null || old.hPa == null) return "—";
+  const d = last.hPa - old.hPa;
+  return (d > 0.5 ? "▲ rising " : d < -0.5 ? "▼ falling " : "► steady ") + (d >= 0 ? "+" : "") + d.toFixed(1);
+}
+
+Chart.defaults.color = "#8ea7c2";
+Chart.defaults.borderColor = "rgba(31,58,92,.6)";
+Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+const base = {
+  responsive: true, maintainAspectRatio: false, animation: false,
+  interaction: { mode: "index", intersect: false },
+  plugins: { legend: { labels: { boxWidth: 10, boxHeight: 10 } } },
+  scales: { x: { ticks: { maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } } }
+};
+function makeChart(id, datasets, scales) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart($(id), { data: { labels: [], datasets }, options: { ...base, scales: { ...base.scales, ...scales } } });
+}
+function initCharts() {
+  makeChart("cRain", [
+    { type: "bar", label: "Rain rate (mm/h)", data: [], backgroundColor: "#22d3ee", yAxisID: "y", barPercentage: 1, categoryPercentage: 1 },
+    { type: "line", label: "Station rate (mm/h)", data: [], borderColor: "#a78bfa", borderWidth: 1, pointRadius: 0, yAxisID: "y", hidden: true },
+    { type: "line", label: "Rain today (mm)", data: [], borderColor: "#38bdf8", backgroundColor: "rgba(56,189,248,.12)", fill: true, pointRadius: 0, borderWidth: 2, yAxisID: "y1", tension: .2 }
+  ], { y: { beginAtZero: true, title: { display: true, text: "mm/h" } },
+       y1: { beginAtZero: true, position: "right", grid: { display: false }, title: { display: true, text: "mm" } } });
+  makeChart("cTemp", [
+    { type: "line", label: "Temp °C", data: [], borderColor: "#fb923c", pointRadius: 0, borderWidth: 2, tension: .3 },
+    { type: "line", label: "Feels °C", data: [], borderColor: "#f43f5e", pointRadius: 0, borderWidth: 1, borderDash: [4, 3], tension: .3 },
+    { type: "line", label: "Dew °C", data: [], borderColor: "#60a5fa", pointRadius: 0, borderWidth: 2, tension: .3 }
+  ], {});
+  makeChart("cHum", [
+    { type: "line", label: "Humidity %", data: [], borderColor: "#34d399", pointRadius: 0, borderWidth: 2, yAxisID: "y", tension: .3 },
+    { type: "line", label: "Pressure hPa", data: [], borderColor: "#e2e8f0", pointRadius: 0, borderWidth: 1.5, yAxisID: "y1", tension: .3 }
+  ], { y: { min: 0, max: 100 }, y1: { position: "right", grid: { display: false } } });
+}
+function renderCharts() {
+  const end = history.length ? history[history.length - 1].t : Date.now();
+  const pts = history.filter((p) => p.t >= end - hours * 3600e3);
+  const labels = pts.map((p) => timeStr(p.t));
+  const set = (id, arrays) => { const c = charts[id]; c.data.labels = labels; arrays.forEach((a, i) => (c.data.datasets[i].data = a)); c.update(); };
+  set("cRain", [pts.map((p) => p.rateMm), pts.map((p) => p.stnRateMm), pts.map((p) => p.rainDayMm)]);
+  set("cTemp", [pts.map((p) => p.tempC), pts.map((p) => p.feelsC), pts.map((p) => p.dewC)]);
+  set("cHum", [pts.map((p) => p.hum), pts.map((p) => p.hPa)]);
+  $("trend").textContent = pressureTrend();
+}
+function renderDaily(daily) {
+  const rows = Object.entries(daily).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 14);
+  const max = Math.max(1, ...rows.map(([, d]) => d.rainMm || 0));
+  $("dailyBody").innerHTML = rows.map(([k, d]) => {
+    const dt = new Date(k + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+    const w = Math.round(((d.rainMm || 0) / max) * 80);
+    return `<tr><td>${dt}</td><td><span class="bar" style="width:${w}px"></span>${fmt(d.rainMm)}</td>
+      <td>${fmt(d.peakRateMm)}</td><td>${fmt(d.tMax)}</td><td>${fmt(d.tMin)}</td></tr>`;
+  }).join("") || `<tr><td colspan="5">No data yet</td></tr>`;
+}
+
+// The page only READS data. Refreshing never moves the rain baseline -
+// only the scheduled GitHub Action (the "cron") runs processRainLogic().
+async function refresh() {
+  try {
+    const [L, H, D] = await Promise.all([getJson("latest.json"), getJson("history.json"), getJson("daily.json")]);
+    history = H;
+    renderLatest(L);
+    renderCharts();
+    renderDaily(D);
+  } catch (e) {
+    $("obsBadge").textContent = "Waiting for first station update…";
+    $("obsBadge").className = "badge stale";
+    console.warn(e);
+  }
+}
+
+document.querySelectorAll('.tabs[data-for="rain"] button').forEach((btn) =>
+  btn.addEventListener("click", () => {
+    document.querySelectorAll('.tabs[data-for="rain"] button').forEach((b) => b.classList.toggle("on", b === btn));
+    hours = +btn.dataset.h;
+    renderCharts();
+  }));
+
+initCharts();
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>
