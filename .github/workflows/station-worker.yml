@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.check.outputs.go == 'true'
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install wrangler
         if: steps.check.outputs.go == 'true'
@@ -47,6 +47,7 @@ jobs:
         id: deploy
         if: steps.check.outputs.go == 'true'
         run: |
+          set -o pipefail
           npx wrangler deploy 2>&1 | tee deploy.log
           url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
           echo "url=$url" >> "$GITHUB_OUTPUT"
