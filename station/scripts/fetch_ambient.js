@@ -140,9 +140,12 @@ async function main() {
       else {
         const { min } = localParts(t);
         if (min <= 20 || min >= 1430) incIn = di;   // genuine midnight reset
-        else incIn = null;                          // sensor glitch drop: ignore this record
+        else {
+          state.dropCount = (state.dropCount || 0) + 1;
+          incIn = state.dropCount >= 3 ? 0 : null;  // glitch: ignore; persistent drop: new baseline
+        }
       }
-      if (incIn !== null) state.lastDailyIn = di;
+      if (incIn !== null) { state.lastDailyIn = di; state.dropCount = 0; }
     }
 
     // friend's rain-rate logic; peak (bufRR) resets when the 08:30 rain day changes

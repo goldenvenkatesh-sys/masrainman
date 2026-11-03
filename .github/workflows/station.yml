@@ -2,7 +2,7 @@ name: Weather Station Update
 
 on:
   schedule:
-    - cron: '*/5 * * * *'   # GitHub may run this late; the script uses each record's own timestamp
+    - cron: '7,37 * * * *'   # backup only - live data comes from the Cloudflare Worker
   workflow_dispatch:
     inputs:
       force_rebuild:

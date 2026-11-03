@@ -1,0 +1,24 @@
+name = "masrainman-station"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[triggers]
+crons = ["* * * * *"]
+
+[[durable_objects.bindings]]
+name = "STATION"
+class_name = "Station"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Station"]
+
+[vars]
+STATION_TZ = "Asia/Kolkata"
+AMBIENT_BASE = "https://rt.ambientweather.net/v1"
+SEED_URL = "https://raw.githubusercontent.com/goldenvenkatesh-sys/masrainman/main/station/data/"
+TIP_IN = "0.01"
+
+[observability]
+enabled = true

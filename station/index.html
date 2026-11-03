@@ -192,7 +192,7 @@ footer a{color:var(--accent)}
     </div>
   </section>
 
-  <footer>Data: Ambient Weather station · rain rate computed from bucket tips every 5 min ·
+  <footer>Data: Ambient Weather station · rain rate computed from bucket tips · live via Cloudflare ·
     <a href="https://masrainman.blogspot.com" target="_blank" rel="noopener">MasRainman</a></footer>
 </div>
 
@@ -225,7 +225,20 @@ function intensity(r) {
   return ["Violent rain", "#2c0510", "var(--violent)"];
 }
 
+// Live data comes from the Cloudflare Worker named in config.json; the repo's data/ files are the backup.
+let API = null, mode = "files";
+const API_PATH = { "latest.json": "/api/latest", "history.json": "/api/history?h=48", "daily.json": "/api/daily" };
+async function loadConfig() {
+  try { const c = await (await fetch("config.json?t=" + Date.now(), { cache: "no-store" })).json(); API = c.api ? c.api.replace(/\/$/, "") : null; } catch { API = null; }
+}
 async function getJson(name) {
+  if (API) {
+    try {
+      const res = await fetch(API + API_PATH[name] + (API_PATH[name].includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
+      if (res.ok) { mode = "live"; return res.json(); }
+    } catch {}
+  }
+  mode = "files";
   const res = await fetch(`data/${name}?t=${Date.now()}`, { cache: "no-store" });
   if (!res.ok) throw new Error(name + " " + res.status);
   return res.json();
@@ -236,9 +249,14 @@ function renderLatest(L) {
   $("stName").textContent = L.station.name;
   $("stLoc").textContent = L.station.location || "Personal weather station";
   const ageMin = (Date.now() - L.obsTime) / 60000;
+  const offline = ageMin > (mode === "live" ? 10 : 30);
   const b = $("obsBadge");
-  b.textContent = (ageMin > 30 ? "Offline · " : "Live · ") + "obs " + timeStr(L.obsTime) + " (" + ago(L.obsTime) + ")";
-  b.className = "badge " + (ageMin > 30 ? "stale" : "live");
+  const t = new Date(L.obsTime).toLocaleTimeString("en-IN", { timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  b.textContent = (offline ? "Offline · " : "Live · ") + "obs " + t + " (" + ago(L.obsTime) + ")";
+  b.className = "badge " + (offline ? "stale" : "live");
+  $("nextBadge").textContent = mode === "live"
+    ? (L.source === "direct" ? "direct from station · refresh 30 s" : "via Ambient · refresh 30 s")
+    : "backup data · refresh 60 s";
 
   const R = L.rain, N = L.now;
   $("rate").textContent = fmt(R.rateMm);
@@ -365,14 +383,26 @@ function renderTotals(L) {
 }
 
 // The page only READS data. Refreshing never moves the rain baseline -
-// only the scheduled GitHub Action (the "cron") runs processRainLogic().
-async function refresh() {
+// only the server side (Cloudflare Worker / GitHub Action) runs the rain logic.
+let lastHistAt = 0, lastDailyAt = 0, lastDayKey = null;
+async function refresh(full = false) {
   try {
-    const [L, H, D] = await Promise.all([getJson("latest.json"), getJson("history.json"), getJson("daily.json")]);
-    history = H;
+    const L = await getJson("latest.json");
+    const now = Date.now();
+    const dayChanged = L.rainDay && L.rainDay.key !== lastDayKey;
+    const wantHist = full || mode !== "live" || now - lastHistAt > 120e3;
+    const wantDaily = full || dayChanged || mode !== "live" || now - lastDailyAt > 600e3;
+    const [H, D] = await Promise.all([wantHist ? getJson("history.json") : null, wantDaily ? getJson("daily.json") : null]);
     renderLatest(L);
+    lastDayKey = L.rainDay ? L.rainDay.key : null;
+    if (H) { history = H; lastHistAt = now; }
+    else if (history.length) {          // add the newest reading to the chart between history loads
+      const last = history[history.length - 1];
+      if (L.obsTime - last.t >= 55e3) history.push({ ...last, t: L.obsTime, d: L.rainDay.key, tempC: L.now.tempC, feelsC: L.now.feelsC,
+        dewC: L.now.dewC, hum: L.now.hum, hPa: L.now.hPa, rateMm: L.rain.rateMm, stnRateMm: L.rain.stnRateMm, rainDayMm: L.rain.dayMm });
+    }
     renderCharts();
-    renderDaily(D);
+    if (D) { renderDaily(D); lastDailyAt = now; }
   } catch (e) {
     $("obsBadge").textContent = "Waiting for first station update…";
     $("obsBadge").className = "badge stale";
@@ -388,8 +418,10 @@ document.querySelectorAll('.tabs[data-for="rain"] button').forEach((btn) =>
   }));
 
 initCharts();
-refresh();
-setInterval(refresh, 60000);
+let timer = null;
+function schedule() { clearInterval(timer); timer = setInterval(() => { if (!document.hidden) refresh(); }, mode === "live" ? 30000 : 60000); }
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+loadConfig().then(() => refresh(true)).then(schedule);
 </script>
 </body>
 </html>
