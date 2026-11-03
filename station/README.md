@@ -11,6 +11,13 @@ rainfall totals, temperature, wind, humidity, pressure, sun, 6/24/48 h charts an
 - `index.html` only reads these files. Refreshing the page never changes the rain baseline —
   only the scheduled Action does (the `isCron` rule from the original code).
 
+## Rain day, totals and records
+- Rain day = IMD convention, 08:30 IST to 08:30 IST, named by the date it ends on.
+- Daily rain is accumulated from bucket tips (Ambient's midnight `dailyrainin` reset is handled).
+- Weekly totals = Mon–Sun rain days; monthly totals by rain-day date; rainy day = 2.5 mm or more.
+- Record highest rain rate and record wettest rain day are kept since logging started.
+- To reload past data: Actions -> Weather Station Update -> Run workflow -> tick *Rebuild*, set days (max 400).
+
 ## Setup (one time)
 1. Get keys at https://ambientweather.net/account → API Keys: an **API key** and an **Application key**.
 2. Repo → Settings → Secrets and variables → Actions → **New repository secret**:

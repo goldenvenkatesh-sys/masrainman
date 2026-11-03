@@ -4,6 +4,14 @@ on:
   schedule:
     - cron: '*/5 * * * *'   # GitHub may run this late; the script uses each record's own timestamp
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Rebuild all data from Ambient history'
+        type: boolean
+        default: false
+      backfill_days:
+        description: 'Days of history to load on a rebuild (max 400)'
+        default: '35'
 
 concurrency:
   group: weather-station
@@ -28,6 +36,8 @@ jobs:
           AMBIENT_MAC: ${{ secrets.AMBIENT_MAC }}
           STATION_TZ: ${{ vars.STATION_TZ }}
           STATION_NAME: ${{ vars.STATION_NAME }}
+          FORCE_REBUILD: ${{ inputs.force_rebuild }}
+          BACKFILL_DAYS: ${{ inputs.backfill_days || '35' }}
         run: node station/scripts/fetch_ambient.js
 
       - name: Commit station data

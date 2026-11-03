@@ -28,8 +28,11 @@ h1{font-size:20px;margin:0;font-weight:800;letter-spacing:.2px}
 .badge.live{color:#bbf7d0;border-color:#166534;background:#052e1a}
 .badge.stale{color:#fecaca;border-color:#7f1d1d;background:#2a0b0b}
 .grid{display:grid;gap:12px}
-.hero{grid-template-columns:1.4fr 1fr 1fr}
+.hero{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr)}
 .cards{grid-template-columns:repeat(4,1fr);margin-top:12px}
+.records{grid-template-columns:1fr 1fr 1.2fr;margin-top:12px}
+.rec{background:linear-gradient(135deg,#1b2f52,#0b1a2c);border-color:#2c4f80}
+.rec .mid{font-size:38px;color:#fde68a}
 .panel{background:linear-gradient(180deg,var(--panel),#0b1a2c);border:1px solid var(--line);border-radius:16px;padding:16px}
 .label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
 .big{font-size:54px;font-weight:800;line-height:1.05;margin-top:6px}
@@ -49,7 +52,9 @@ h1{font-size:20px;margin:0;font-weight:800;letter-spacing:.2px}
 .compass .n{position:absolute;top:2px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted)}
 .compass .arrow{position:absolute;left:50%;top:50%;width:4px;height:30px;margin:-30px 0 0 -2px;transform-origin:50% 100%;
   background:linear-gradient(var(--accent),transparent);border-radius:2px;transition:transform .6s}
-.charts{grid-template-columns:1fr 1fr;margin-top:12px}
+.charts{grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-top:12px}
+.panel{min-width:0}
+.tbl{overflow-x:auto}
 .charts .panel{height:300px;display:flex;flex-direction:column}
 .charts .wide{grid-column:1/-1;height:340px}
 .cwrap{position:relative;flex:1;min-height:0;margin-top:8px}
@@ -63,8 +68,8 @@ footer a{color:var(--accent)}
 .tabs{display:flex;gap:6px}
 .tabs button{background:var(--panel2);color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .tabs button.on{color:var(--text);border-color:var(--accent)}
-.head{display:flex;justify-content:space-between;align-items:center;gap:8px}
-@media (max-width:900px){.hero{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}.totals{grid-template-columns:repeat(3,1fr)}}
+.head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px}
+@media (max-width:900px){.hero,.records{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}.totals{grid-template-columns:repeat(3,1fr)}}
 @media (max-width:420px){.big{font-size:44px}.cards{grid-template-columns:1fr 1fr}}
 </style>
 </head>
@@ -93,17 +98,18 @@ footer a{color:var(--accent)}
       <div class="row"><span>Station sensor rate</span><b id="stnRate">—</b></div>
       <div class="row"><span>Last tip</span><b id="lastTip">—</b></div>
       <div class="totals">
-        <div class="tot"><span>Event</span><b id="evMm">—</b></div>
-        <div class="tot"><span>Today</span><b id="dayMm">—</b></div>
-        <div class="tot"><span>Week</span><b id="wkMm">—</b></div>
-        <div class="tot"><span>Month</span><b id="moMm">—</b></div>
+        <div class="tot"><span>Since 8:30</span><b id="dayMm">—</b></div>
+        <div class="tot"><span>Yesterday</span><b id="prevMm">—</b></div>
+        <div class="tot"><span>This week</span><b id="wkMm">—</b></div>
+        <div class="tot"><span>This month</span><b id="moMm">—</b></div>
         <div class="tot"><span>Year</span><b id="yrMm">—</b></div>
       </div>
     </div>
     <div class="panel">
-      <div class="label">Rainfall today</div>
+      <div class="label">Rainfall since 8:30 am</div>
       <div class="big"><span id="dayBig">—</span><small>mm</small></div>
-      <div class="row"><span>Peak rate today</span><b id="peak">—</b></div>
+      <div class="row"><span>Rain day</span><b id="rainDay">—</b></div>
+      <div class="row"><span>Peak rate this rain day</span><b id="peak">—</b></div>
       <div class="row"><span>Peak at</span><b id="peakAt">—</b></div>
       <div class="row"><span>Last rain</span><b id="lastRain">—</b></div>
     </div>
@@ -113,6 +119,27 @@ footer a{color:var(--accent)}
       <div class="row"><span>Feels like</span><b id="feels">—</b></div>
       <div class="row"><span>Today max / min</span><b id="maxmin">—</b></div>
       <div class="row"><span>Dew point</span><b id="dew">—</b></div>
+    </div>
+  </section>
+
+  <section class="grid records">
+    <div class="panel rec">
+      <div class="label">🏆 Record highest rain rate</div>
+      <div class="mid"><span id="recRate">—</span><small>mm/h</small></div>
+      <div class="row"><span>Date of event</span><b id="recRateAt">—</b></div>
+    </div>
+    <div class="panel rec">
+      <div class="label">🌧️ Record wettest rain day</div>
+      <div class="mid"><span id="recDay">—</span><small>mm</small></div>
+      <div class="row"><span>24 h ending 8:30 am on</span><b id="recDayAt">—</b></div>
+    </div>
+    <div class="panel">
+      <div class="label">Weekly &amp; monthly total</div>
+      <div class="row" style="margin-top:12px"><span id="wkLabel">This week</span><b id="wkMm2">—</b></div>
+      <div class="row"><span>Last 7 rain days</span><b id="l7Mm">—</b></div>
+      <div class="row"><span id="moLabel">This month</span><b id="moMm2">—</b></div>
+      <div class="row"><span>Rainy days this month (≥ 2.5 mm)</span><b id="moRainy">—</b></div>
+      <div class="row" style="font-size:11px"><span>Records since</span><b id="since">—</b></div>
     </div>
   </section>
 
@@ -145,15 +172,23 @@ footer a{color:var(--accent)}
   <section class="grid charts">
     <div class="panel wide">
       <div class="head"><div class="label">Rain rate &amp; accumulation</div>
-        <div class="tabs" data-for="rain"><button data-h="6">6 h</button><button data-h="24" class="on">24 h</button><button data-h="48">48 h</button></div></div>
+        <div class="tabs" data-for="rain"><button data-v="today" class="on">Today (8:30→)</button><button data-v="prev">Yesterday</button><button data-v="48">48 h</button></div></div>
       <div class="cwrap"><canvas id="cRain"></canvas></div>
     </div>
     <div class="panel"><div class="label">Temperature &amp; dew point</div><div class="cwrap"><canvas id="cTemp"></canvas></div></div>
     <div class="panel"><div class="label">Humidity &amp; pressure</div><div class="cwrap"><canvas id="cHum"></canvas></div></div>
     <div class="panel wide" style="height:auto">
-      <div class="label">Daily summary</div>
-      <table><thead><tr><th>Date</th><th>Rain (mm)</th><th>Peak rate (mm/h)</th><th>Max °C</th><th>Min °C</th></tr></thead>
-      <tbody id="dailyBody"></tbody></table>
+      <div class="label">Daily rainfall · 24 h ending 8:30 am IST</div>
+      <div class="tbl"><table><thead><tr><th>Ending 8:30 am on</th><th>Rain (mm)</th><th>Peak rate (mm/h)</th><th>Peak at</th><th>Max °C</th><th>Min °C</th></tr></thead>
+      <tbody id="dailyBody"></tbody></table></div>
+    </div>
+    <div class="panel" style="height:auto">
+      <div class="label">Weekly totals (Mon–Sun rain days)</div>
+      <div class="tbl"><table><thead><tr><th>Week</th><th>Rain (mm)</th></tr></thead><tbody id="weekBody"></tbody></table></div>
+    </div>
+    <div class="panel" style="height:auto">
+      <div class="label">Monthly totals</div>
+      <div class="tbl"><table><thead><tr><th>Month</th><th>Rain (mm)</th><th>Rainy days</th><th>Wettest day</th><th>Peak rate</th></tr></thead><tbody id="monthBody"></tbody></table></div>
     </div>
   </section>
 
@@ -163,12 +198,16 @@ footer a{color:var(--accent)}
 
 <script>
 const TZ_DEFAULT = "Asia/Kolkata";
-let TZ = TZ_DEFAULT, hours = 24, history = [], charts = {};
+let TZ = TZ_DEFAULT, view = "today", history = [], charts = {}, rainDayKey = null;
 
 const $ = (id) => document.getElementById(id);
 const fmt = (v, d = 1) => (v == null || isNaN(v) ? "—" : Number(v).toFixed(d));
 const timeStr = (ms) => ms ? new Date(ms).toLocaleTimeString("en-IN", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }) : "—";
-const dateTimeStr = (ms) => ms ? new Date(ms).toLocaleString("en-IN", { timeZone: TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+const dateTimeStr = (ms) => ms ? new Date(ms).toLocaleString("en-IN", { timeZone: TZ, day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+const dayLabel = (k, opt = { weekday: "short", day: "numeric", month: "short" }) =>
+  k ? new Date(k + "T12:00:00Z").toLocaleDateString("en-IN", { timeZone: "UTC", ...opt }) : "—";
+const monthLabel = (m) => new Date(m + "-15T12:00:00Z").toLocaleDateString("en-IN", { timeZone: "UTC", month: "long", year: "numeric" });
+const prevKey = (k) => { const d = new Date(k + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
 function ago(ms) {
   if (!ms) return "—";
   const m = Math.round((Date.now() - ms) / 60000);
@@ -209,15 +248,32 @@ function renderLatest(L) {
   $("meter").style.width = Math.min(100, Math.sqrt((R.rateMm || 0) / 100) * 100) + "%";
   $("stnRate").textContent = fmt(R.stnRateMm) + " mm/h";
   $("lastTip").textContent = R.lastTip ? ago(R.lastTip) : "—";
-  $("evMm").textContent = fmt(R.eventMm);
+  rainDayKey = L.rainDay ? L.rainDay.key : null;
   $("dayMm").textContent = fmt(R.dayMm);
+  $("prevMm").textContent = fmt(R.prevDayMm);
   $("wkMm").textContent = fmt(R.weekMm);
   $("moMm").textContent = fmt(R.monthMm);
-  $("yrMm").textContent = fmt(R.yearMm, 0);
+  $("yrMm").textContent = fmt(R.stationYearMm ?? R.yearMm, 0);
   $("dayBig").textContent = fmt(R.dayMm);
+  $("rainDay").textContent = rainDayKey ? "8:30 " + dayLabel(prevKey(rainDayKey), { day: "numeric", month: "short" }) + " → 8:30 " + dayLabel(rainDayKey, { day: "numeric", month: "short" }) : "—";
   $("peak").textContent = fmt(R.peakRateMm) + " mm/h";
-  $("peakAt").textContent = R.peakRateMm ? timeStr(R.peakAt) : "—";
+  $("peakAt").textContent = R.peakRateMm ? dateTimeStr(R.peakAt) : "—";
   $("lastRain").textContent = R.lastRain ? dateTimeStr(R.lastRain) : "—";
+
+  const rec = L.record || {};
+  $("recRate").textContent = fmt(rec.rateMm);
+  $("recRateAt").textContent = rec.rateAt ? dateTimeStr(rec.rateAt) : "—";
+  $("recDay").textContent = fmt(rec.dayMm);
+  $("recDayAt").textContent = rec.dayKey ? dayLabel(rec.dayKey, { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : "—";
+  $("wkLabel").textContent = "This week (from " + dayLabel(R.weekStart, { day: "numeric", month: "short" }) + ")";
+  $("wkMm2").textContent = fmt(R.weekMm) + " mm";
+  $("l7Mm").textContent = fmt(R.last7Mm) + " mm";
+  $("moLabel").textContent = rainDayKey ? monthLabel(rainDayKey.slice(0, 7)) : "This month";
+  $("moMm2").textContent = fmt(R.monthMm) + " mm";
+  const thisMonth = (L.months || [])[0];
+  $("moRainy").textContent = thisMonth ? thisMonth.rainyDays : "—";
+  $("since").textContent = L.loggingSince ? dayLabel(L.loggingSince, { day: "numeric", month: "short", year: "numeric" }) : "—";
+  renderTotals(L);
 
   $("temp").textContent = fmt(N.tempC);
   $("feels").textContent = fmt(N.feelsC) + " °C";
@@ -274,7 +330,9 @@ function initCharts() {
 }
 function renderCharts() {
   const end = history.length ? history[history.length - 1].t : Date.now();
-  const pts = history.filter((p) => p.t >= end - hours * 3600e3);
+  const key = rainDayKey || (history.length ? history[history.length - 1].d : null);
+  const pts = view === "48" ? history.filter((p) => p.t >= end - 48 * 3600e3)
+            : history.filter((p) => p.d === (view === "prev" ? prevKey(key) : key));
   const labels = pts.map((p) => timeStr(p.t));
   const set = (id, arrays) => { const c = charts[id]; c.data.labels = labels; arrays.forEach((a, i) => (c.data.datasets[i].data = a)); c.update(); };
   set("cRain", [pts.map((p) => p.rateMm), pts.map((p) => p.stnRateMm), pts.map((p) => p.rainDayMm)]);
@@ -286,11 +344,24 @@ function renderDaily(daily) {
   const rows = Object.entries(daily).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 14);
   const max = Math.max(1, ...rows.map(([, d]) => d.rainMm || 0));
   $("dailyBody").innerHTML = rows.map(([k, d]) => {
-    const dt = new Date(k + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
     const w = Math.round(((d.rainMm || 0) / max) * 80);
-    return `<tr><td>${dt}</td><td><span class="bar" style="width:${w}px"></span>${fmt(d.rainMm)}</td>
-      <td>${fmt(d.peakRateMm)}</td><td>${fmt(d.tMax)}</td><td>${fmt(d.tMin)}</td></tr>`;
-  }).join("") || `<tr><td colspan="5">No data yet</td></tr>`;
+    const live = k === rainDayKey ? ' <span style="color:var(--accent);font-size:11px">(so far)</span>' : "";
+    return `<tr><td>${dayLabel(k)}${live}</td><td><span class="bar" style="width:${w}px"></span>${fmt(d.rainMm)}</td>
+      <td>${fmt(d.peakRateMm)}</td><td>${d.peakRateMm ? new Date(d.peakAt).toLocaleString("en-IN", { timeZone: TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+      <td>${fmt(d.tMax)}</td><td>${fmt(d.tMin)}</td></tr>`;
+  }).join("") || `<tr><td colspan="6">No data yet</td></tr>`;
+}
+function renderTotals(L) {
+  const weeks = L.weeks || [], months = L.months || [];
+  const wmax = Math.max(1, ...weeks.map((w) => w.rainMm || 0));
+  $("weekBody").innerHTML = weeks.map((w, i) => {
+    const endK = (() => { const d = new Date(w.start + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); })();
+    return `<tr><td>${dayLabel(w.start, { day: "numeric", month: "short" })} – ${dayLabel(endK, { day: "numeric", month: "short" })}${i === 0 ? ' <span style="color:var(--accent);font-size:11px">(this week)</span>' : ""}</td>
+      <td><span class="bar" style="width:${Math.round((w.rainMm / wmax) * 70)}px"></span>${fmt(w.rainMm)}</td></tr>`;
+  }).join("") || `<tr><td colspan="2">No data yet</td></tr>`;
+  $("monthBody").innerHTML = months.map((m) => `<tr><td>${monthLabel(m.month)}</td><td>${fmt(m.rainMm)}</td><td>${m.rainyDays}</td>
+      <td>${m.maxDayKey ? fmt(m.maxDayMm) + " <span style='color:var(--muted)'>(" + dayLabel(m.maxDayKey, { day: "numeric", month: "short" }) + ")</span>" : "—"}</td>
+      <td>${fmt(m.peakRateMm)}</td></tr>`).join("") || `<tr><td colspan="5">No data yet</td></tr>`;
 }
 
 // The page only READS data. Refreshing never moves the rain baseline -
@@ -312,7 +383,7 @@ async function refresh() {
 document.querySelectorAll('.tabs[data-for="rain"] button').forEach((btn) =>
   btn.addEventListener("click", () => {
     document.querySelectorAll('.tabs[data-for="rain"] button').forEach((b) => b.classList.toggle("on", b === btn));
-    hours = +btn.dataset.h;
+    view = btn.dataset.v;
     renderCharts();
   }));
 
