@@ -1,0 +1,14 @@
+name: Station Worker Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Worker status and latest reading
+        run: |
+          B=https://masrainman-station.goldenvenkatesh.workers.dev
+          echo "== status"; curl -s "$B/api/status"; echo
+          echo "== latest (now + rain)"; curl -s "$B/api/latest" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('obsTime'),d.get('source'));print(d.get('now'));print(d.get('rain'))"

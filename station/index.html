@@ -248,12 +248,17 @@ function renderLatest(L) {
   TZ = L.station.tz || TZ_DEFAULT;
   $("stName").textContent = L.station.name;
   $("stLoc").textContent = L.station.location || "Personal weather station";
-  const ageMin = (Date.now() - L.obsTime) / 60000;
+  if (!L.obsTime) {
+    $("obsBadge").textContent = "Waiting for first live reading…"; $("obsBadge").className = "badge stale";
+  }
+  const ageMin = L.obsTime ? (Date.now() - L.obsTime) / 60000 : 999;
   const offline = ageMin > (mode === "live" ? 10 : 30);
   const b = $("obsBadge");
   const t = new Date(L.obsTime).toLocaleTimeString("en-IN", { timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  b.textContent = (offline ? "Offline · " : "Live · ") + "obs " + t + " (" + ago(L.obsTime) + ")";
-  b.className = "badge " + (offline ? "stale" : "live");
+  if (L.obsTime) {
+    b.textContent = (offline ? "Offline · " : "Live · ") + "obs " + t + " (" + ago(L.obsTime) + ")";
+    b.className = "badge " + (offline ? "stale" : "live");
+  }
   $("nextBadge").textContent = mode === "live"
     ? (L.source === "direct" ? "direct from station · refresh 30 s" : "via Ambient · refresh 30 s")
     : "backup data · refresh 60 s";

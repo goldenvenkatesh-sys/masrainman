@@ -179,7 +179,7 @@ export class Station extends DurableObject {
   }
 
   buildSnapshot(s) {
-    const T = this.T, o = s.obs || {}, last = o.t || Date.now();
+    const T = this.T, o = s.obs || {}, last = o.t || s.lastT || Date.now();
     const daily = this.allDays();
     const todayKey = T.rainDayKey(last), today = daily[todayKey] || {};
     const sum = (fn) => r1(Object.entries(daily).filter(([k]) => fn(k)).reduce((a, [, v]) => a + (v.rainMm || 0), 0));
@@ -197,7 +197,7 @@ export class Station extends DurableObject {
     const st = s.station || {};
     return {
       station: { name: this.env.STATION_NAME || st.name || "MasRainman Weather Station", location: st.location || "", lat: st.lat ?? null, lon: st.lon ?? null, tz: this.env.STATION_TZ || "Asia/Kolkata" },
-      obsTime: last, builtAt: Date.now(), source: s.source,
+      obsTime: o.t || null, builtAt: Date.now(), source: s.source,
       loggingSince: Object.keys(daily)[0] || todayKey,
       rainDay: { key: todayKey, startsAt: "08:30" },
       now: {
@@ -225,14 +225,27 @@ export class Station extends DurableObject {
 
   // ---- cron: Ambient REST latest reading ----
   async poll() {
+    let result;
+    try { result = await this.pollInner(); }
+    catch (e) { result = { error: String(e && e.message || e) }; }
+    const s = await this.state();
+    s.lastPoll = { at: Date.now(), result };
+    await this.ctx.storage.put("state", s);
+    return result;
+  }
+
+  async pollInner() {
     const s = await this.state();
     if (Date.now() - s.lastDirectAt < DIRECT_FRESH_MS) return { skipped: "direct uploads active" };
     const { AMBIENT_API_KEY: k1, AMBIENT_APP_KEY: k2 } = this.env;
     if (!k1 || !k2) return { skipped: "no Ambient keys" };
     const base = this.env.AMBIENT_BASE || "https://rt.ambientweather.net/v1";
     const res = await fetch(`${base}/devices?apiKey=${encodeURIComponent(k1)}&applicationKey=${encodeURIComponent(k2)}`);
-    if (!res.ok) return { error: `Ambient ${res.status}` };
-    const devs = await res.json();
+    const text = await res.text();
+    if (!res.ok) return { error: `Ambient ${res.status}: ${text.slice(0, 150)}` };
+    let devs;
+    try { devs = JSON.parse(text); } catch { return { error: "Ambient sent non-JSON: " + text.slice(0, 150) }; }
+    if (!Array.isArray(devs)) return { error: "Ambient: " + text.slice(0, 150) };
     const dev = devs.find((d) => d.macAddress === this.env.AMBIENT_MAC) || devs[0];
     if (!dev?.lastData) return { error: "no station data" };
     if (dev.info) {
@@ -265,7 +278,9 @@ export class Station extends DurableObject {
     if (p === "/api/daily") return json(this.allDays(), 120);
     if (p === "/api/status") {
       const s = this._state;
-      return json({ lastReading: s.lastT, source: s.source, lastDirectAt: s.lastDirectAt || null, historyPoints: this.sql.exec("SELECT COUNT(*) AS n FROM history").one().n });
+      return json({ lastReading: s.lastT, lastReadingIST: s.lastT ? new Date(s.lastT).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : null,
+        hasObs: !!s.obs, source: s.source, lastDirectAt: s.lastDirectAt || null, lastPoll: s.lastPoll || null,
+        keys: { api: !!this.env.AMBIENT_API_KEY, app: !!this.env.AMBIENT_APP_KEY, upload: !!this.env.UPLOAD_TOKEN }, historyPoints: this.sql.exec("SELECT COUNT(*) AS n FROM history").one().n });
     }
     return json({ error: "not found" }, 0, 404);
   }
