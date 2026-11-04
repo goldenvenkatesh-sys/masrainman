@@ -3,14 +3,14 @@
  "buf": {
   "lastRainRaw": 0,
   "lastRainTime": 1793730600000,
-  "lastSampleTime": 1793761800000,
+  "lastSampleTime": 1793791500000,
   "lastCalculatedRate": 0.12,
   "currentRate": 0,
   "bufRR": 0,
   "tRR": null,
   "dayKey": "2026-11-05"
  },
- "lastProcessed": 1793761800000,
+ "lastProcessed": 1793791500000,
  "lastDailyIn": 0,
  "record": {
   "rateMm": 118.9,
