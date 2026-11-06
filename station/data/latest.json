@@ -4,44 +4,44 @@
   "location": "Chennai",
   "tz": "Asia/Kolkata"
  },
- "obsTime": 1793931000000,
- "builtAt": 1793931301602,
+ "obsTime": 1793958300000,
+ "builtAt": 1793958412882,
  "loggingSince": "2026-09-26",
  "rainDay": {
-  "key": "2026-11-06",
+  "key": "2026-11-07",
   "startsAt": "08:30"
  },
  "now": {
-  "tempC": 26.3,
-  "feelsC": 27.4,
-  "dewC": 25.2,
-  "hum": 94,
-  "windKmh": 0,
-  "gustKmh": 0,
-  "maxGustKmh": 11.2,
-  "dir": 161,
-  "hPa": 1013.1,
-  "solar": 116.76,
+  "tempC": 28.2,
+  "feelsC": 33.5,
+  "dewC": 25.5,
+  "hum": 85,
+  "windKmh": 2.5,
+  "gustKmh": 3.6,
+  "maxGustKmh": 20.2,
+  "dir": 36,
+  "hPa": 1009.7,
+  "solar": 159.78,
   "uv": 1,
-  "inTempC": 30,
-  "inHum": 74
+  "inTempC": 30.9,
+  "inHum": 72
  },
  "rain": {
   "rateMm": 0,
   "stnRateMm": 0,
-  "peakRateMm": 18.3,
-  "peakAt": 1793928900000,
-  "dayMm": 2.3,
-  "prevDayMm": 0.5,
-  "last7Mm": 30.4,
-  "weekMm": 30.4,
+  "peakRateMm": 88.4,
+  "peakAt": 1793944800000,
+  "dayMm": 9.7,
+  "prevDayMm": 2.3,
+  "last7Mm": 40.1,
+  "weekMm": 40.1,
   "weekStart": "2026-11-02",
-  "monthMm": 30.4,
-  "yearMm": 282.3,
-  "stationYearMm": 802.4,
-  "eventMm": 1.8,
-  "lastRain": 1793929440000,
-  "lastTip": 1793928900000
+  "monthMm": 40.1,
+  "yearMm": 292,
+  "stationYearMm": 812,
+  "eventMm": 11.4,
+  "lastRain": 1793945640000,
+  "lastTip": 1793945100000
  },
  "record": {
   "rateMm": 118.9,
@@ -50,13 +50,13 @@
   "dayKey": "2026-10-18"
  },
  "today": {
-  "tMax": 33.1,
-  "tMin": 25.9
+  "tMax": 31.6,
+  "tMin": 26.1
  },
  "weeks": [
   {
    "start": "2026-11-02",
-   "rainMm": 30.4
+   "rainMm": 40.1
   },
   {
    "start": "2026-10-26",
@@ -86,12 +86,12 @@
  "months": [
   {
    "month": "2026-11",
-   "rainMm": 30.4,
-   "rainyDays": 2,
+   "rainMm": 40.1,
+   "rainyDays": 3,
    "maxDayMm": 23,
    "maxDayKey": "2026-11-02",
-   "peakRateMm": 18.3,
-   "peakAt": 1793928900000
+   "peakRateMm": 88.4,
+   "peakAt": 1793944800000
   },
   {
    "month": "2026-10",
