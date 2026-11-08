@@ -1,17 +1,17 @@
 {
  "v": 2,
  "buf": {
-  "lastRainRaw": 0.02,
-  "lastRainTime": 1794091200000,
-  "lastSampleTime": 1794095400000,
-  "lastCalculatedRate": 0.12,
-  "currentRate": 0,
-  "bufRR": 0.72,
-  "tRR": 1794022500000,
-  "dayKey": "2026-11-08"
+  "lastRainRaw": 0.9,
+  "lastRainTime": 1794116100000,
+  "lastSampleTime": 1794117000000,
+  "lastCalculatedRate": 0.06000000000000005,
+  "currentRate": 0.06000000000000005,
+  "bufRR": 0.4800000000000004,
+  "tRR": 1794112800000,
+  "dayKey": "2026-11-09"
  },
- "lastProcessed": 1794095400000,
- "lastDailyIn": 0.02,
+ "lastProcessed": 1794117000000,
+ "lastDailyIn": 0.9,
  "record": {
   "rateMm": 118.9,
   "rateAt": 1792260600000,
