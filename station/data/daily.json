@@ -334,5 +334,12 @@
   "peakAt": null,
   "tMax": 31.9,
   "tMin": 24.5
+ },
+ "2026-11-13": {
+  "rainMm": 0,
+  "peakRateMm": 0,
+  "peakAt": null,
+  "tMax": 31.9,
+  "tMin": 28
  }
 }
