@@ -4,26 +4,26 @@
   "location": "Chennai",
   "tz": "Asia/Kolkata"
  },
- "obsTime": 1794584100000,
- "builtAt": 1794584357094,
+ "obsTime": 1794606600000,
+ "builtAt": 1794606894626,
  "loggingSince": "2026-09-26",
  "rainDay": {
   "key": "2026-11-14",
   "startsAt": "08:30"
  },
  "now": {
-  "tempC": 28,
-  "feelsC": 31.6,
-  "dewC": 23.6,
-  "hum": 77,
-  "windKmh": 2.2,
-  "gustKmh": 3.6,
-  "maxGustKmh": 23.8,
-  "dir": 122,
-  "hPa": 1013.2,
+  "tempC": 25.5,
+  "feelsC": 26.5,
+  "dewC": 23.7,
+  "hum": 90,
+  "windKmh": 1.1,
+  "gustKmh": 1.8,
+  "maxGustKmh": 7.2,
+  "dir": 130,
+  "hPa": 1010.9,
   "solar": 0,
   "uv": 0,
-  "inTempC": 30.1,
+  "inTempC": 30.7,
   "inHum": 65
  },
  "rain": {
@@ -41,7 +41,7 @@
   "stationYearMm": 857.5,
   "eventMm": 1,
   "lastRain": 1794540240000,
-  "lastTip": 1794539700000
+  "lastTip": 1794594900000
  },
  "record": {
   "rateMm": 118.9,
@@ -51,7 +51,7 @@
  },
  "today": {
   "tMax": 31.5,
-  "tMin": 25.9
+  "tMin": 25.4
  },
  "weeks": [
   {
